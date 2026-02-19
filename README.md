@@ -20,9 +20,9 @@ This repo contains:
 ## Install in Claude (or compatible skill loader)
 
 1. Download `dist/delphi-api-safe.skill`
-2. Import the skill in your assistant environment
+2. Import the skill in Claude
 3. Confirm the skill appears as `delphi-api-safe`
-4. Start with: "Test this Delphi account safely" and provide required inputs
+4. Follow `docs/CLAUDE-QUICKSTART.md` for copy-paste prompts
 
 ## Non-technical safe behavior
 
@@ -34,6 +34,23 @@ The skill always requests missing required info before acting. It will ask for:
 4. Constraints (redaction, timestamp inclusion, output style)
 
 ## Local usage (script)
+
+### Easiest local option (one command)
+
+1. Copy `smoke-config.example.json` to `smoke-config.json`
+2. Fill in your API key + slug
+3. Run:
+
+```bash
+make smoke
+```
+
+For full endpoint checks:
+
+```bash
+make smoke-full
+```
+
 
 Chat flow test (single clone):
 
