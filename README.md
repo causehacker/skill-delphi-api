@@ -11,7 +11,7 @@ This repo contains:
 
 ## What this skill does
 
-- Runs safe Delphi V3 checks (`/v3/conversation`, `/v3/stream`)
+- Runs safe Delphi V3 checks for conversation, stream, users, tags, and user info endpoints
 - Handles self-discovery first, then asks for missing required inputs
 - Never invents sensitive/user-specific values (emails, API keys, slugs)
 - Produces pass/fail matrices and incident-ready reports
@@ -35,20 +35,37 @@ The skill always requests missing required info before acting. It will ask for:
 
 ## Local usage (script)
 
-Single clone:
+Chat flow test (single clone):
 
 ```bash
 python3 delphi-api-safe/scripts/test_delphi_v3.py \
   --api-key "$DELPHI_API_KEY" \
   --slug "jc3" \
-  --account "Jim Carter"
+  --account "Jim Carter" \
+  --mode chat
 ```
 
-Matrix mode:
+Full endpoint sweep (read-only):
 
 ```bash
 python3 delphi-api-safe/scripts/test_delphi_v3.py \
-  --matrix-json '[{"account":"Jim","api_key":"...","slug":"jc3"}]'
+  --api-key "$DELPHI_API_KEY" \
+  --slug "jc3" \
+  --mode full \
+  --user-email "real-user@example.com"
+```
+
+Full endpoint sweep (includes writes, explicit opt-in):
+
+```bash
+python3 delphi-api-safe/scripts/test_delphi_v3.py \
+  --api-key "$DELPHI_API_KEY" \
+  --slug "jc3" \
+  --mode full \
+  --user-email "real-user@example.com" \
+  --allow-write \
+  --tag-name "api-test-tag" \
+  --info-text "safe test note"
 ```
 
 ## Security policy

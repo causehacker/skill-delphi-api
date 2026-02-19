@@ -9,9 +9,24 @@ Run Delphi V3 API tests in a non-destructive, user-safe way. Prefer reproducible
 
 ## Core rules
 
-- Use **V3 endpoints only**:
+- Use **V3 endpoints only**. Supported/tested coverage includes:
   - `POST /v3/conversation`
   - `POST /v3/stream`
+  - `POST /v3/users/lookup`
+  - `GET /v3/users/{user_id}/flywheel`
+  - `GET /v3/users/{user_id}/tier`
+  - `GET /v3/users/{user_id}/usage`
+  - `PATCH /v3/users/{user_id}`
+  - `POST /v3/users/{user_id}/revoke`
+  - `POST /v3/users/{user_id}/activate`
+  - `GET /v3/tags`
+  - `POST /v3/tags`
+  - `POST /v3/users/{user_id}/tags/{tag_name}`
+  - `DELETE /v3/users/{user_id}/tags/{tag_name}`
+  - `GET /v3/users/{user_id}/info`
+  - `POST /v3/users/{user_id}/info`
+  - `DELETE /v3/users/{user_id}/info/{info_id}`
+- See `references/v3-endpoints.md` for request/response expectations and known quirks.
 - Never invent user data (emails, API keys, slugs, clone names, webhook URLs).
 - If a required field is missing, ask a direct question before proceeding.
 - Treat API keys as sensitive secrets. Never paste them into public outputs unless the user explicitly asks.
@@ -116,25 +131,33 @@ curl -i -N -X POST "https://api.delphi.ai/v3/stream" \
 
 ## Use bundled script
 
-For reliable repeated testing, run:
+For reliable repeated testing, run chat mode:
 
 ```bash
-python3 scripts/test_delphi_v3.py --api-key "$DELPHI_API_KEY" --slug "<slug>"
+python3 scripts/test_delphi_v3.py --api-key "$DELPHI_API_KEY" --slug "<slug>" --mode chat
 ```
 
-Or matrix mode:
+Run full mode (users/tags/info included):
 
 ```bash
-python3 scripts/test_delphi_v3.py --matrix-json '<JSON_ARRAY>'
+python3 scripts/test_delphi_v3.py \
+  --api-key "$DELPHI_API_KEY" \
+  --slug "<slug>" \
+  --mode full \
+  --user-email "<real-user-email>"
 ```
 
-`--matrix-json` format:
+Enable write endpoint tests only with explicit consent:
 
-```json
-[
-  {"account":"Jim Carter","api_key":"...","slug":"jc3"},
-  {"account":"Jay-I","api_key":"...","slug":"jay-i"}
-]
+```bash
+python3 scripts/test_delphi_v3.py \
+  --api-key "$DELPHI_API_KEY" \
+  --slug "<slug>" \
+  --mode full \
+  --user-email "<real-user-email>" \
+  --allow-write \
+  --tag-name "<tag-name>" \
+  --info-text "<safe-test-note>"
 ```
 
 The script prints structured JSON suitable for incident docs.

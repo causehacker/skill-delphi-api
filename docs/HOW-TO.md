@@ -43,23 +43,57 @@ curl -i -N -X POST "https://api.delphi.ai/v3/stream" \
 
 ## Deterministic script mode
 
-Single test:
+### Chat flow only
 
 ```bash
 python3 delphi-api-safe/scripts/test_delphi_v3.py \
   --api-key "$DELPHI_API_KEY" \
   --slug "jc3" \
-  --account "Jim Carter"
+  --account "Jim Carter" \
+  --mode chat
 ```
 
-Matrix test:
+### Full endpoint checks (read-only + chat)
 
 ```bash
 python3 delphi-api-safe/scripts/test_delphi_v3.py \
-  --matrix-json '[{"account":"Jim Carter","api_key":"<key>","slug":"jc3"}]'
+  --api-key "$DELPHI_API_KEY" \
+  --slug "jc3" \
+  --mode full \
+  --user-email "real-user@example.com"
 ```
+
+### Full endpoint checks with writes (explicit opt-in)
+
+```bash
+python3 delphi-api-safe/scripts/test_delphi_v3.py \
+  --api-key "$DELPHI_API_KEY" \
+  --slug "jc3" \
+  --mode full \
+  --user-email "real-user@example.com" \
+  --allow-write \
+  --tag-name "api-test-tag" \
+  --info-text "safe test note"
+```
+
+## Endpoint coverage in full mode
+
+- `/v3/conversation`, `/v3/stream`
+- `/v3/users/lookup`
+- `/v3/users/{user_id}/flywheel`
+- `/v3/users/{user_id}/tier`
+- `/v3/users/{user_id}/usage`
+- `/v3/tags`
+- plus write endpoints when `--allow-write` is provided:
+  - `PATCH /v3/users/{user_id}`
+  - `POST /v3/users/{user_id}/revoke`
+  - `POST /v3/users/{user_id}/activate`
+  - `POST /v3/tags`
+  - `POST/DELETE /v3/users/{user_id}/tags/{tag_name}`
+  - `POST/DELETE /v3/users/{user_id}/info...`
 
 ## PASS/FAIL criteria
 
-- PASS: conversation returns 200 and stream emits SSE data with `[DONE]`
-- FAIL: any non-200, malformed JSON, or stream missing completion marker
+- PASS (chat): conversation 200 and stream SSE contains `data:` + `[DONE]`
+- PASS (endpoint checks): endpoint HTTP 200
+- FAIL: non-200, malformed payloads, missing stream completion markers
