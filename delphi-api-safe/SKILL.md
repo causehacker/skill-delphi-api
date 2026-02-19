@@ -29,7 +29,9 @@ Run Delphi V3 API tests in a non-destructive, user-safe way. Prefer reproducible
 - See `references/v3-endpoints.md` for request/response expectations and known quirks.
 - Never invent user data (emails, API keys, slugs, clone names, webhook URLs).
 - If a required field is missing, ask a direct question before proceeding.
-- Treat API keys as sensitive secrets. Never paste them into public outputs unless the user explicitly asks.
+- Treat API keys as sensitive secrets.
+- ALWAYS redact keys in user-visible output. Show only masked form (example: `dsk-****WmQ`) or use `$DELPHI_API_KEY`.
+- Never echo raw keys back to the user, even if the key was user-provided, unless the user explicitly asks for full key replay.
 - For non-technical users, always provide copy-paste commands and plain-English interpretation.
 
 ## Required user inputs
@@ -123,11 +125,19 @@ curl -i -N -X POST "https://api.delphi.ai/v3/stream" \
 ## Non-technical UX rules
 
 - Explain each result in one line: "Create worked, stream failed with 500".
+- Always redact secrets in all summaries, tables, and examples.
 - When user pastes broken command output, identify if issue is:
   - command syntax,
   - JSON formatting,
   - or backend failure.
 - If backend failure is reproducible, generate a ready-to-send incident report.
+
+## Key handling and storage policy
+
+- Default to ephemeral key handling in-memory.
+- If local persistence is needed (`smoke-config.json`), store only on the user's machine.
+- Never commit credential files.
+- User can "throw away" stored key anytime by deleting `smoke-config.json` or replacing the key with a blank value.
 
 ## Use bundled script
 

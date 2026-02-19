@@ -88,7 +88,10 @@ python3 delphi-api-safe/scripts/test_delphi_v3.py \
 ## Security policy
 
 - Never commit API keys or credentials.
+- Always redact keys in user-visible output.
 - Keep all examples redacted.
-- If you need local secrets, use environment variables only.
+- Local config storage is supported (`smoke-config.json`) and stays on your machine.
+- `smoke-config.json` is gitignored.
+- You can throw away stored credentials anytime by deleting `smoke-config.json`.
 
 See `.gitignore` and `SECURITY.md`.

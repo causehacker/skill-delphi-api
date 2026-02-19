@@ -64,6 +64,13 @@ make smoke-full
 
 ## Important safety notes
 
+- The skill should ALWAYS redact keys in user-visible responses.
 - Never paste real keys into public chats or GitHub issues.
 - Never invent a user email - use a real one provided by the user.
 - Keep `allow_write` off unless explicitly approved.
+
+## Key storage and deletion
+
+- If you use local config (`smoke-config.json`), the key is stored only on your machine.
+- `smoke-config.json` is gitignored to prevent accidental commits.
+- To throw away credentials, delete `smoke-config.json` (or clear its `api_key` value).

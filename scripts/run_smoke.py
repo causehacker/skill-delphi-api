@@ -63,8 +63,12 @@ def main():
                 die("allow_write=true requires info_text in smoke-config.json")
             cmd += ["--allow-write", "--tag-name", tag_name, "--info-text", info_text]
 
+    display_cmd = " ".join(shlex.quote(x) for x in cmd)
+    if api_key:
+        display_cmd = display_cmd.replace(api_key, "***redacted***")
+
     print("Running:")
-    print(" ".join(shlex.quote(x) for x in cmd[:2] + ["***redacted***"] + cmd[3:]))
+    print(display_cmd)
 
     p = subprocess.run(cmd, text=True)
     sys.exit(p.returncode)
