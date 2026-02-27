@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delphi V3 API Reference</title>
+<style>
+  :root {
+    --bg: #f8f9fb;
+    --surface: #fff;
+    --border: #e2e6ed;
+    --text: #1a1d23;
+    --text-secondary: #5f6775;
+    --accent: #4f6ef7;
+    --accent-hover: #3b5ae0;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+    --radius: 8px;
+    --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+    --shadow-lg: 0 4px 12px rgba(0,0,0,.08);
+    --get: #16a34a;
+    --post: #2563eb;
+    --put: #d97706;
+    --patch: #7c3aed;
+    --delete: #dc2626;
+    --get-bg: #f0fdf4;
+    --post-bg: #eff6ff;
+    --put-bg: #fffbeb;
+    --patch-bg: #f5f3ff;
+    --delete-bg: #fef2f2;
+    --sidebar-w: 240px;
+    --topbar-h: 64px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; scroll-padding-top: calc(var(--topbar-h) + 24px); }
+  body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.6; font-size: 14px; }
+
+  /* ── Top Bar ── */
+  .topbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: var(--topbar-h); background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 16px;
+    padding: 0 24px; box-shadow: var(--shadow);
+  }
+  .topbar .logo { font-weight: 700; font-size: 16px; color: var(--accent); white-space: nowrap; letter-spacing: -.3px; }
+  .topbar .logo span { color: var(--text-secondary); font-weight: 400; font-size: 13px; margin-left: 6px; }
+  .topbar .fields { display: flex; gap: 10px; flex: 1; max-width: 720px; }
+  .topbar input {
+    flex: 1; min-width: 0; padding: 7px 12px; border: 1px solid var(--border);
+    border-radius: 6px; font-size: 13px; font-family: var(--mono);
+    background: var(--bg); transition: border-color .15s;
+  }
+  .topbar input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,110,247,.12); }
+  .topbar input::placeholder { color: #aab0bc; }
+  .topbar .status { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+  .topbar .status.ok { color: var(--get); }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    position: fixed; top: var(--topbar-h); left: 0; bottom: 0;
+    width: var(--sidebar-w); background: var(--surface);
+    border-right: 1px solid var(--border); padding: 20px 0;
+    overflow-y: auto;
+  }
+  .sidebar h3 {
+    padding: 6px 20px; font-size: 10px; text-transform: uppercase;
+    letter-spacing: .8px; color: #9ca3af; margin-top: 12px;
+  }
+  .sidebar h3:first-child { margin-top: 0; }
+  .sidebar a {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 20px; text-decoration: none; color: var(--text-secondary);
+    font-size: 13px; transition: all .12s; border-left: 2px solid transparent;
+  }
+  .sidebar a:hover { color: var(--text); background: var(--bg); }
+  .sidebar a .method-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+
+  /* ── Main ── */
+  .main {
+    margin-left: var(--sidebar-w); margin-top: var(--topbar-h);
+    padding: 32px 40px 80px;
+    max-width: 920px;
+  }
+  .main > h1 { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+  .main > .subtitle { color: var(--text-secondary); margin-bottom: 32px; font-size: 15px; }
+
+  .section-title {
+    font-size: 20px; font-weight: 700; margin: 40px 0 16px;
+    padding-bottom: 8px; border-bottom: 2px solid var(--border);
+  }
+
+  /* ── Endpoint Card ── */
+  .endpoint {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); margin-bottom: 16px;
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .endpoint-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 18px; cursor: pointer; user-select: none;
+    transition: background .1s;
+  }
+  .endpoint-header:hover { background: var(--bg); }
+  .method-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 60px; padding: 3px 10px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; font-family: var(--mono);
+    text-transform: uppercase; letter-spacing: .3px; color: #fff;
+  }
+  .method-badge.get    { background: var(--get); }
+  .method-badge.post   { background: var(--post); }
+  .method-badge.put    { background: var(--put); }
+  .method-badge.patch  { background: var(--patch); }
+  .method-badge.delete { background: var(--delete); }
+  .endpoint-path { font-family: var(--mono); font-size: 13px; font-weight: 600; flex: 1; }
+  .endpoint-desc { font-size: 12px; color: var(--text-secondary); }
+  .endpoint-chevron { font-size: 18px; color: #c5c9d2; transition: transform .2s; }
+  .endpoint.open .endpoint-chevron { transform: rotate(90deg); }
+
+  .endpoint-body { display: none; border-top: 1px solid var(--border); }
+  .endpoint.open .endpoint-body { display: block; }
+
+  .endpoint-section { padding: 16px 18px; }
+  .endpoint-section + .endpoint-section { border-top: 1px solid var(--border); }
+  .endpoint-section h4 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
+    color: #9ca3af; margin-bottom: 8px;
+  }
+
+  /* Params table */
+  .params-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .params-table th {
+    text-align: left; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .5px; color: #9ca3af; padding: 4px 12px 4px 0;
+    border-bottom: 1px solid var(--border); font-weight: 500;
+  }
+  .params-table td { padding: 6px 12px 6px 0; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+  .params-table code { font-family: var(--mono); font-size: 12px; background: #f3f4f6; padding: 1px 5px; border-radius: 3px; }
+  .params-table .required { color: var(--delete); font-size: 10px; font-weight: 600; }
+  .params-table .optional { color: #9ca3af; font-size: 10px; }
+
+  /* Curl block */
+  .curl-block {
+    position: relative; background: #1e1e2e; color: #cdd6f4;
+    border-radius: 6px; padding: 14px 16px; font-family: var(--mono);
+    font-size: 12px; line-height: 1.7; overflow-x: auto; white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .curl-block .kw { color: #89b4fa; }
+  .curl-block .str { color: #a6e3a1; }
+  .curl-block .flag { color: #f9e2af; }
+
+  /* Action buttons row */
+  .actions { display: flex; gap: 8px; margin-top: 10px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 6px; font-size: 12px;
+    font-weight: 600; border: none; cursor: pointer;
+    transition: all .12s; font-family: var(--font);
+  }
+  .btn-copy { background: #f3f4f6; color: var(--text-secondary); }
+  .btn-copy:hover { background: #e5e7eb; color: var(--text); }
+  .btn-send { background: var(--accent); color: #fff; }
+  .btn-send:hover { background: var(--accent-hover); }
+
+  /* Response panel */
+  .response-panel { margin-top: 12px; display: none; }
+  .response-panel.visible { display: block; }
+  .response-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; background: #f8f9fb; border-radius: 6px 6px 0 0;
+    border: 1px solid var(--border); border-bottom: none;
+    font-size: 12px;
+  }
+  .status-code { font-family: var(--mono); font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+  .status-code.s2xx { background: var(--get-bg); color: var(--get); }
+  .status-code.s4xx { background: #fef3c7; color: #92400e; }
+  .status-code.s5xx { background: var(--delete-bg); color: var(--delete); }
+  .status-code.serr { background: #fef2f2; color: var(--delete); }
+  .response-time { color: var(--text-secondary); font-family: var(--mono); font-size: 11px; }
+  .response-bar .spacer { flex: 1; }
+  .btn-copy-resp {
+    background: none; border: 1px solid var(--border); border-radius: 4px;
+    padding: 2px 8px; font-size: 11px; cursor: pointer; color: var(--text-secondary);
+    font-family: var(--font); transition: all .12s; display: flex; align-items: center; gap: 4px;
+  }
+  .btn-copy-resp:hover { background: #e5e7eb; color: var(--text); }
+  .btn-copy-resp.copied { background: var(--get-bg); color: var(--get); border-color: #bbf7d0; }
+  .response-body {
+    background: #1e1e2e; color: #cdd6f4; border-radius: 0 0 6px 6px;
+    padding: 14px 16px; font-family: var(--mono); font-size: 12px;
+    line-height: 1.6; overflow-x: auto; max-height: 400px; overflow-y: auto;
+    white-space: pre-wrap; word-break: break-all;
+    border: 1px solid #313244;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 200;
+    background: #1e1e2e; color: #cdd6f4; padding: 10px 18px;
+    border-radius: 8px; font-size: 13px; font-weight: 500;
+    box-shadow: var(--shadow-lg); opacity: 0; transform: translateY(8px);
+    transition: all .2s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  /* Mode banner */
+  .mode-banner {
+    padding: 10px 18px; font-size: 12px; border-radius: 6px;
+    margin-bottom: 24px; display: flex; align-items: center; gap: 8px;
+  }
+  .mode-banner.proxy { background: var(--get-bg); color: #15803d; border: 1px solid #bbf7d0; }
+  .mode-banner.static { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+  .mode-banner .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .mode-banner.proxy .dot { background: var(--get); }
+  .mode-banner.static .dot { background: #f59e0b; }
+
+  /* Paste fallback */
+  .paste-area {
+    width: 100%; min-height: 80px; max-height: 200px; margin-top: 8px;
+    padding: 10px 12px; border: 1px dashed var(--border); border-radius: 6px;
+    font-family: var(--mono); font-size: 12px; background: var(--bg);
+    resize: vertical; display: none;
+  }
+  .paste-area.visible { display: block; }
+  .btn-format { background: #f3f4f6; color: var(--text-secondary); display: none; }
+  .btn-format.visible { display: inline-flex; }
+  .btn-format:hover { background: #e5e7eb; color: var(--text); }
+
+  /* Validation */
+  .field-invalid {
+    border-color: var(--delete) !important;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, .12) !important;
+    animation: shake .4s ease;
+  }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-4px); }
+    40%, 80% { transform: translateX(4px); }
+  }
+  /* Resolved user badge */
+  .resolved-user {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--get-bg); border: 1px solid #bbf7d0;
+    border-radius: 6px; padding: 4px 10px;
+    font-size: 11px; white-space: nowrap;
+    animation: fadeIn .25s ease;
+  }
+  .resolved-user.loading { background: #f3f4f6; border-color: var(--border); }
+  .resolved-user .uid-label { color: var(--text-secondary); }
+  .resolved-user code {
+    font-family: var(--mono); font-size: 11px; color: var(--get); font-weight: 600;
+    max-width: 110px; overflow: hidden; text-overflow: ellipsis; display: inline-block;
+  }
+  .resolved-user.loading code { color: var(--text-secondary); }
+  .resolved-copy {
+    background: none; border: none; cursor: pointer;
+    font-size: 11px; padding: 0 2px; opacity: .5; transition: opacity .15s;
+  }
+  .resolved-copy:hover { opacity: 1; }
+  @keyframes fadeIn { from { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: scale(1); } }
+
+  /* Streaming response */
+  .stream-panel { margin-top: 12px; display: none; }
+  .stream-panel.visible { display: block; }
+  .stream-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; background: #f8f9fb; border-radius: 6px 6px 0 0;
+    border: 1px solid var(--border); border-bottom: none; font-size: 12px;
+  }
+  .stream-bar .spacer { flex: 1; }
+  .stream-status { font-family: var(--mono); font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+  .stream-status.streaming { background: var(--post-bg); color: var(--post); }
+  .stream-status.done { background: var(--get-bg); color: var(--get); }
+  .stream-status.err { background: var(--delete-bg); color: var(--delete); }
+  .stream-meta { color: var(--text-secondary); font-family: var(--mono); font-size: 11px; }
+  .stream-output {
+    background: var(--surface); border: 1px solid var(--border); border-top: none;
+    padding: 16px 18px; font-size: 14px; line-height: 1.7; min-height: 48px;
+    position: relative;
+  }
+  .stream-output .cursor {
+    display: inline-block; width: 2px; height: 1em; background: var(--accent);
+    margin-left: 1px; vertical-align: text-bottom;
+    animation: blink .6s steps(2) infinite;
+  }
+  @keyframes blink { 0% { opacity: 1; } 100% { opacity: 0; } }
+  .stream-raw {
+    background: #1e1e2e; color: #cdd6f4; border-radius: 0 0 6px 6px;
+    padding: 14px 16px; font-family: var(--mono); font-size: 12px;
+    line-height: 1.6; overflow-x: auto; max-height: 300px; overflow-y: auto;
+    white-space: pre-wrap; word-break: break-all; border: 1px solid #313244;
+    border-top: none; display: none;
+  }
+  .stream-raw.visible { display: block; }
+  .stream-toggle {
+    background: none; border: 1px solid var(--border); border-radius: 4px;
+    padding: 2px 8px; font-size: 11px; cursor: pointer; color: var(--text-secondary);
+    font-family: var(--font); transition: all .12s;
+  }
+  .stream-toggle:hover { background: #e5e7eb; color: var(--text); }
+  .stream-toggle.active { background: var(--post-bg); color: var(--post); border-color: #bfdbfe; }
+
+  /* Auto-filled fields */
+  .ep-extra.auto-filled {
+    border-color: var(--get) !important;
+    background: var(--get-bg) !important;
+  }
+
+  /* Responsive */
+  @media (max-width: 860px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 24px 16px 80px; }
+    .topbar .fields { max-width: none; }
+    .topbar .logo span { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Top Bar ── -->
+<div class="topbar">
+  <div class="logo">Delphi<span>V3 API</span></div>
+  <div class="fields">
+    <input id="apiKey" type="password" placeholder="x-api-key" spellcheck="false">
+    <input id="slug" type="text" placeholder="clone-slug" spellcheck="false">
+    <input id="userEmail" type="email" placeholder="user email (optional)" spellcheck="false">
+  </div>
+  <div id="resolvedUser" class="resolved-user" style="display:none">
+    <span class="uid-label">user_id</span>
+    <code id="resolvedUid" title=""></code>
+    <button class="resolved-copy" onclick="copyUid()" title="Copy user_id">&#128203;</button>
+  </div>
+  <div id="connStatus" class="status">Ready</div>
+</div>
+
+<!-- ── Sidebar ── -->
+<nav class="sidebar" id="sidebar"></nav>
+
+<!-- ── Main ── -->
+<div class="main">
+  <h1>Delphi V3 API Reference</h1>
+  <p class="subtitle">Interactive endpoint explorer &mdash; 21 endpoints, zero dependencies. Fill in your API key above to enable live testing.</p>
+  <div id="modeBanner"></div>
+  <div id="endpoints"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const DELPHI_BASE = "https://api.delphi.ai";
+let proxyAvailable = false;
+let proxyBase = "";  // e.g. "http://localhost:8787/api"
+
+/* ── Proxy Detection ── */
+async function detectProxy() {
+  // If served over HTTP (not file://), try the /api/ proxy on same origin
+  if (location.protocol === "http:") {
+    proxyBase = location.origin + "/api";
+    try {
+      // Any response (even 403) proves the proxy is forwarding — only a network error means no proxy
+      await fetch(proxyBase + "/healthcheck", { method: "GET", signal: AbortSignal.timeout(2000) });
+      proxyAvailable = true;
+      return;
+    } catch {}
+  }
+  proxyAvailable = false;
+  proxyBase = "";
+}
+
+function updateModeBanner() {
+  const el = $id("modeBanner");
+  if (proxyAvailable) {
+    el.innerHTML = '<div class="mode-banner proxy"><span class="dot"></span><strong>Proxy connected</strong> &mdash; Send buttons hit the API through the local proxy. No CORS issues.</div>';
+    $id("connStatus").textContent = "Proxy";
+    $id("connStatus").className = "status ok";
+  } else {
+    el.innerHTML = '<div class="mode-banner static"><span class="dot"></span><strong>Static mode</strong> &mdash; Copy curl commands to your terminal. Or run <code>python3 docs/serve.py</code> then open <code>localhost:8787/api-reference.html</code> for live Send.</div>';
+    $id("connStatus").textContent = "Static";
+    $id("connStatus").className = "status";
+  }
+}
+
+/* ── Endpoint Definitions ── */
+const ENDPOINTS = [
+  { section: "Conversations", endpoints: [
+    { method: "POST", path: "/v3/conversation", summary: "Create conversation", desc: "Start a new conversation and get the initial greeting.",
+      body: [
+        { name: "slug", type: "string", req: true, desc: "Clone slug" },
+        { name: "user_email", type: "string", req: false, desc: "Associate with a user" },
+      ],
+      bodyFn: g => ({ slug: g.slug, ...(g.userEmail ? { user_email: g.userEmail } : {}) })
+    },
+    { method: "POST", path: "/v3/stream", summary: "Stream response (SSE)", desc: "Send a message and receive a streamed SSE reply. Each SSE chunk contains a <code>current_token</code>. The final chunk (where <code>current_token</code> is <code>[DONE]</code>) includes the full <code>text</code>, <code>id</code>, <code>citations</code>, and <code>questions</code>.",
+      stream: true,
+      body: [
+        { name: "conversation_id", type: "string", req: true, desc: "From /v3/conversation" },
+        { name: "message", type: "string", req: true, desc: "User message text" },
+        { name: "slug", type: "string", req: true, desc: "Clone slug" },
+        { name: "file_urls", type: "string[]", req: false, desc: "Optional file attachments" },
+      ],
+      extra: [{ id: "stream_cid", placeholder: "conversation_id", label: "Conversation ID" }, { id: "stream_msg", placeholder: "Hello!", label: "Message" }],
+      bodyFn: (g, ex) => ({ conversation_id: ex.stream_cid || "<conversation_id>", message: ex.stream_msg || "Hello!", slug: g.slug })
+    },
+    { method: "GET", path: "/v3/conversation/list", summary: "List conversations", desc: "List all conversations for a user under this clone.",
+      query: [{ name: "email", type: "string", req: true, desc: "User email address" }],
+      queryFn: g => `?email=${encodeURIComponent(g.userEmail || "<user-email>")}`
+    },
+    { method: "GET", path: "/v3/conversation/{conversation_id}/history", summary: "Get conversation history", desc: "Retrieve message history for a conversation, with optional citations.",
+      pathParams: [{ name: "conversation_id", desc: "Conversation UUID" }],
+      query: [{ name: "include_citations", type: "boolean", req: false, desc: "Include source citations (default: false)" }],
+      extra: [{ id: "hist_cid", placeholder: "conversation_id", label: "Conversation ID" }],
+      queryFn: () => "?include_citations=false",
+      pathFn: (g, ex) => `/v3/conversation/${ex.hist_cid || "<conversation_id>"}/history`
+    },
+    { method: "PUT", path: "/v3/conversation/{conversation_id}/title", summary: "Update conversation title", desc: "Set a new title for a conversation (1-500 chars).",
+      pathParams: [{ name: "conversation_id", desc: "Conversation UUID" }],
+      body: [{ name: "title", type: "string", req: true, desc: "New title (1-500 chars)" }],
+      extra: [{ id: "title_cid", placeholder: "conversation_id", label: "Conversation ID" }, { id: "title_val", placeholder: "New Title", label: "Title" }],
+      pathFn: (g, ex) => `/v3/conversation/${ex.title_cid || "<conversation_id>"}/title`,
+      bodyFn: (g, ex) => ({ title: ex.title_val || "New Title" })
+    },
+    { method: "DELETE", path: "/v3/conversation/{conversation_id}", summary: "Delete conversation", desc: "Soft-delete a conversation (marks as hidden).",
+      pathParams: [{ name: "conversation_id", desc: "Conversation UUID" }],
+      extra: [{ id: "del_cid", placeholder: "conversation_id", label: "Conversation ID" }],
+      pathFn: (g, ex) => `/v3/conversation/${ex.del_cid || "<conversation_id>"}`
+    },
+  ]},
+  { section: "Questions", endpoints: [
+    { method: "GET", path: "/v3/questions", summary: "Get suggested questions", desc: "Retrieve suggested questions created for this clone.",
+      query: [
+        { name: "type", type: "string", req: false, desc: "pinned | unpinned | all (default: pinned)" },
+        { name: "count", type: "integer", req: false, desc: "1-100 (default: 5)" },
+        { name: "randomize", type: "boolean", req: false, desc: "Randomize order (default: false)" },
+      ],
+      queryFn: () => "?type=pinned&count=5&randomize=false"
+    },
+  ]},
+  { section: "Users", endpoints: [
+    { method: "POST", path: "/v3/users/lookup", summary: "Lookup user by email", desc: "Resolve an email address to a user_id. May auto-create for whitelisted keys.",
+      body: [{ name: "email", type: "string", req: true, desc: "User email" }],
+      bodyFn: g => ({ email: g.userEmail || "<user-email>" })
+    },
+    { method: "GET", path: "/v3/users/{user_id}/flywheel", summary: "Get user flywheel data", desc: "Complete user profile as shown in the admin audience tab.",
+      pathParams: [{ name: "user_id", desc: "User UUID" }],
+      extra: [{ id: "fw_uid", placeholder: "user_id", label: "User ID" }],
+      pathFn: (g, ex) => `/v3/users/${ex.fw_uid || "<user_id>"}/flywheel`
+    },
+    { method: "GET", path: "/v3/users/{user_id}/tier", summary: "Get user tier", desc: "Returns the user's access tier (PUBLIC or INTERNAL).",
+      pathParams: [{ name: "user_id", desc: "User UUID" }],
+      extra: [{ id: "tier_uid", placeholder: "user_id", label: "User ID" }],
+      pathFn: (g, ex) => `/v3/users/${ex.tier_uid || "<user_id>"}/tier`
+    },
+    { method: "GET", path: "/v3/users/{user_id}/usage", summary: "Get user usage", desc: "Detailed usage metrics: period, quota, usage, and remaining.",
+      pathParams: [{ name: "user_id", desc: "User UUID" }],
+      extra: [{ id: "usage_uid", placeholder: "user_id", label: "User ID" }],
+      pathFn: (g, ex) => `/v3/users/${ex.usage_uid || "<user_id>"}/usage`
+    },
+    { method: "PATCH", path: "/v3/users/{user_id}", summary: "Update user", desc: "Update user profile fields. All fields optional.",
+      pathParams: [{ name: "user_id", desc: "User UUID" }],
+      body: [
+        { name: "name", type: "string", req: false, desc: "Display name" },
+        { name: "phone_number", type: "string", req: false, desc: "E.164 format" },
+        { name: "sms_opt_in", type: "boolean", req: false, desc: "SMS campaign opt-in" },
+        { name: "call_opt_in", type: "boolean", req: false, desc: "Call campaign opt-in" },
+        { name: "tier", type: "string", req: false, desc: "PUBLIC | INTERNAL" },
+      ],
+      extra: [{ id: "upd_uid", placeholder: "user_id", label: "User ID" }, { id: "upd_name", placeholder: "Test User", label: "Name", req: false }],
+      pathFn: (g, ex) => `/v3/users/${ex.upd_uid || "<user_id>"}`,
+      bodyFn: (g, ex) => ({ name: ex.upd_name || "Test User" })
+    },
+    { method: "POST", path: "/v3/users/{user_id}/revoke", summary: "Revoke user access", desc: "Soft-delete user access. Preserves data for audit.",
+      pathParams: [{ name: "user_id", desc: "User UUID" }],
+      extra: [{ id: "rev_uid", placeholder: "user_id", label: "User ID" }],
+      pathFn: (g, ex) => `/v3/users/${ex.rev_uid || "<user_id>"}/revoke`,
+      bodyFn: () => ({})
+    },
+    { method: "POST", path: "/v3/users/{user_id}/activate", summary: "Activate user access", desc: "Re-activate a previously revoked user.",
+      pathParams: [{ name: "user_id", desc: "User UUID" }],
+      extra: [{ id: "act_uid", placeholder: "user_id", label: "User ID" }],
+      pathFn: (g, ex) => `/v3/users/${ex.act_uid || "<user_id>"}/activate`,
+      bodyFn: () => ({})
+    },
+  ]},
+  { section: "Tags", endpoints: [
+    { method: "GET", path: "/v3/tags", summary: "List all tags", desc: "Get all tags for this clone with user counts." },
+    { method: "POST", path: "/v3/tags", summary: "Create tag", desc: "Create a new tag. Names must be unique per clone.",
+      body: [
+        { name: "name", type: "string", req: true, desc: "Tag name" },
+        { name: "color", type: "string", req: false, desc: "Color (default: 'default')" },
+      ],
+      extra: [{ id: "tag_name", placeholder: "my-tag", label: "Tag Name" }],
+      bodyFn: (g, ex) => ({ name: ex.tag_name || "my-tag" })
+    },
+    { method: "POST", path: "/v3/users/{user_id}/tags/{tag_name}", summary: "Tag user", desc: "Apply a tag to a user. Idempotent.",
+      pathParams: [{ name: "user_id", desc: "User UUID" }, { name: "tag_name", desc: "Existing tag name" }],
+      extra: [{ id: "tu_uid", placeholder: "user_id", label: "User ID" }, { id: "tu_tag", placeholder: "tag-name", label: "Tag Name" }],
+      pathFn: (g, ex) => `/v3/users/${ex.tu_uid || "<user_id>"}/tags/${ex.tu_tag || "<tag_name>"}`,
+      bodyFn: () => ({})
+    },
+    { method: "DELETE", path: "/v3/users/{user_id}/tags/{tag_name}", summary: "Untag user", desc: "Remove a tag from a user. Idempotent.",
+      pathParams: [{ name: "user_id", desc: "User UUID" }, { name: "tag_name", desc: "Tag name to remove" }],
+      extra: [{ id: "ut_uid", placeholder: "user_id", label: "User ID" }, { id: "ut_tag", placeholder: "tag-name", label: "Tag Name" }],
+      pathFn: (g, ex) => `/v3/users/${ex.ut_uid || "<user_id>"}/tags/${ex.ut_tag || "<tag_name>"}`
+    },
+  ]},
+  { section: "User Info", endpoints: [
+    { method: "GET", path: "/v3/users/{user_id}/info", summary: "List user info", desc: "Get all stored info items for a user.",
+      pathParams: [{ name: "user_id", desc: "User UUID" }],
+      extra: [{ id: "gi_uid", placeholder: "user_id", label: "User ID" }],
+      pathFn: (g, ex) => `/v3/users/${ex.gi_uid || "<user_id>"}/info`
+    },
+    { method: "POST", path: "/v3/users/{user_id}/info", summary: "Create user info", desc: "Store a piece of info about a user.",
+      pathParams: [{ name: "user_id", desc: "User UUID" }],
+      body: [
+        { name: "info", type: "string", req: true, desc: "The information text" },
+        { name: "info_type", type: "string", req: true, desc: "WHY_DELPHI | HOW_DELPHI | INTERESTS | PREFERENCES | PERSONAL_INFO | GOAL | JOURNAL" },
+        { name: "source", type: "string", req: false, desc: "MESSAGE | MANUAL | INFERENCE | API (default: API)" },
+      ],
+      extra: [{ id: "ci_uid", placeholder: "user_id", label: "User ID" }, { id: "ci_text", placeholder: "Loves hiking", label: "Info Text" }],
+      pathFn: (g, ex) => `/v3/users/${ex.ci_uid || "<user_id>"}/info`,
+      bodyFn: (g, ex) => ({ info: ex.ci_text || "Test info", info_type: "JOURNAL", source: "API" })
+    },
+    { method: "DELETE", path: "/v3/users/{user_id}/info/{info_id}", summary: "Delete user info", desc: "Remove a specific info item by ID.",
+      pathParams: [{ name: "user_id", desc: "User UUID" }, { name: "info_id", desc: "Info item UUID" }],
+      extra: [{ id: "di_uid", placeholder: "user_id", label: "User ID" }, { id: "di_iid", placeholder: "info_id", label: "Info ID" }],
+      pathFn: (g, ex) => `/v3/users/${ex.di_uid || "<user_id>"}/info/${ex.di_iid || "<info_id>"}`
+    },
+  ]},
+];
+
+/* ── Helpers ── */
+function $(sel, ctx) { return (ctx || document).querySelector(sel); }
+function globals() {
+  return { apiKey: $id("apiKey").value.trim(), slug: $id("slug").value.trim(), userEmail: $id("userEmail").value.trim() };
+}
+function $id(id) { return document.getElementById(id); }
+function toast(msg) {
+  const t = $id("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("show"), 2000);
+}
+function getExtras(ep) {
+  const out = {};
+  (ep.extra || []).forEach(e => { const el = $id(e.id); if (el) out[e.id] = el.value.trim(); });
+  return out;
+}
+
+function resolvedPath(ep) {
+  const g = globals(), ex = getExtras(ep);
+  if (ep.pathFn) return ep.pathFn(g, ex);
+  return ep.path;
+}
+
+function resolvedUrl(ep, forCurl) {
+  const base = (!forCurl && proxyAvailable) ? proxyBase : DELPHI_BASE;
+  let url = base + resolvedPath(ep);
+  if (ep.queryFn) url += ep.queryFn(globals());
+  return url;
+}
+
+function curlUrl(ep) {
+  let url = DELPHI_BASE + resolvedPath(ep);
+  if (ep.queryFn) url += ep.queryFn(globals());
+  return url;
+}
+
+function resolvedBody(ep) {
+  if (!ep.bodyFn) return null;
+  return ep.bodyFn(globals(), getExtras(ep));
+}
+
+function buildCurl(ep) {
+  const g = globals();
+  const key = g.apiKey || "$DELPHI_API_KEY";
+  const method = ep.method;
+  const url = curlUrl(ep);
+  let parts = [`curl -sS -X ${method} "${url}"`];
+  parts.push(`  -H "x-api-key: ${key}"`);
+  const body = resolvedBody(ep);
+  if (body && Object.keys(body).length > 0) {
+    parts.push(`  -H "Content-Type: application/json"`);
+    parts.push(`  -d '${JSON.stringify(body)}'`);
+  }
+  return parts.join(" \\\n");
+}
+
+/* ── User ID Lookup ── */
+let resolvedUserId = "";
+let lookupTimer = null;
+
+async function lookupUser() {
+  const g = globals();
+  if (!g.apiKey || !g.userEmail) { clearResolvedUser(); return; }
+
+  // Show loading state
+  const badge = $id("resolvedUser");
+  const uidEl = $id("resolvedUid");
+  badge.style.display = "flex";
+  badge.classList.add("loading");
+  uidEl.textContent = "looking up\u2026";
+  uidEl.title = "";
+
+  const url = (proxyAvailable ? proxyBase : DELPHI_BASE) + "/v3/users/lookup";
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "x-api-key": g.apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: g.userEmail })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const uid = data.user_id || data.id;
+      if (uid) {
+        resolvedUserId = uid;
+        showResolvedUser(uid);
+        autoFillUserIds();
+        return;
+      }
+    }
+  } catch {}
+  clearResolvedUser();
+}
+
+function showResolvedUser(uid) {
+  const badge = $id("resolvedUser");
+  const uidEl = $id("resolvedUid");
+  badge.style.display = "flex";
+  badge.classList.remove("loading");
+  uidEl.textContent = uid.length > 16 ? uid.slice(0, 8) + "\u2026" + uid.slice(-6) : uid;
+  uidEl.title = uid;
+}
+
+function clearResolvedUser() {
+  resolvedUserId = "";
+  const badge = $id("resolvedUser");
+  badge.style.display = "none";
+  badge.classList.remove("loading");
+  // Clear any auto-filled fields
+  document.querySelectorAll(".ep-extra.auto-filled").forEach(el => {
+    el.value = "";
+    el.dataset.autoFilled = "";
+    el.classList.remove("auto-filled");
+    const idx = parseInt(el.dataset.ep, 10);
+    if (!isNaN(idx)) refreshCurl(idx);
+  });
+}
+
+function copyUid() {
+  if (resolvedUserId) navigator.clipboard.writeText(resolvedUserId).then(() => toast("User ID copied"));
+}
+
+function autoFillUserIds() {
+  if (!resolvedUserId) return;
+  document.querySelectorAll('.ep-extra[data-param="user_id"]').forEach(el => {
+    // Only auto-fill if empty or was previously auto-filled by us
+    if (!el.value.trim() || el.dataset.autoFilled === "yes") {
+      el.value = resolvedUserId;
+      el.dataset.autoFilled = "yes";
+      el.classList.add("auto-filled");
+      el.classList.remove("field-invalid");
+      const idx = parseInt(el.dataset.ep, 10);
+      if (!isNaN(idx)) refreshCurl(idx);
+    }
+  });
+}
+
+function debouncedLookup() {
+  clearTimeout(lookupTimer);
+  lookupTimer = setTimeout(lookupUser, 600);
+}
+
+/* ── Render ── */
+function renderParamsTable(params, title) {
+  if (!params || !params.length) return "";
+  let html = `<div class="endpoint-section"><h4>${title}</h4><table class="params-table"><thead><tr><th>Name</th><th>Type</th><th></th><th>Description</th></tr></thead><tbody>`;
+  params.forEach(p => {
+    const badge = p.req ? '<span class="required">required</span>' : '<span class="optional">optional</span>';
+    html += `<tr><td><code>${p.name}</code></td><td>${p.type || "string"}</td><td>${badge}</td><td>${p.desc}</td></tr>`;
+  });
+  html += "</tbody></table></div>";
+  return html;
+}
+
+function renderExtras(ep, idx) {
+  if (!ep.extra || !ep.extra.length) return "";
+  let html = '<div class="endpoint-section"><h4>Parameters</h4><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
+  ep.extra.forEach(e => {
+    const isReq = e.req !== false;
+    html += `<div style="position:relative;flex:1;min-width:140px;display:flex;align-items:center">`;
+    html += `<input id="${e.id}" type="text" placeholder="${e.placeholder}${isReq ? ' *' : ''}" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:12px" data-ep="${idx}" data-param="${e.placeholder}" class="ep-extra" data-req="${isReq}">`;
+    html += `</div>`;
+  });
+  html += "</div></div>";
+  return html;
+}
+
+function renderEndpoint(ep, idx) {
+  const m = ep.method.toLowerCase();
+  return `
+    <div class="endpoint" id="ep-${idx}">
+      <div class="endpoint-header" onclick="toggleEp(${idx})">
+        <span class="method-badge ${m}">${ep.method}</span>
+        <span class="endpoint-path">${ep.path}</span>
+        <span class="endpoint-desc">${ep.summary}</span>
+        <span class="endpoint-chevron">&#9654;</span>
+      </div>
+      <div class="endpoint-body">
+        <div class="endpoint-section" style="color:var(--text-secondary);font-size:13px">${ep.desc}</div>
+        ${renderParamsTable(ep.pathParams, "Path Parameters")}
+        ${renderParamsTable(ep.query, "Query Parameters")}
+        ${renderParamsTable(ep.body, "Request Body")}
+        ${renderExtras(ep, idx)}
+        <div class="endpoint-section">
+          <h4>curl</h4>
+          <div class="curl-block" id="curl-${idx}">${escCurl(buildCurl(ep))}</div>
+          <div class="actions">
+            <button class="btn btn-copy" onclick="copyCurl(${idx})">&#128203; Copy curl</button>
+            <button class="btn btn-send" id="btn-send-${idx}" onclick="sendReq(${idx})">&#9654; Send</button>
+            <button class="btn btn-format" id="btn-fmt-${idx}" onclick="formatPaste(${idx})">&#10024; Format</button>
+          </div>
+          <textarea class="paste-area" id="paste-${idx}" placeholder="Paste terminal output here, then click Format..."></textarea>
+          ${ep.stream ? `
+          <div class="stream-panel" id="stream-${idx}">
+            <div class="stream-bar">
+              <span class="stream-status" id="stream-status-${idx}"></span>
+              <span class="stream-meta" id="stream-meta-${idx}"></span>
+              <span class="spacer"></span>
+              <button class="stream-toggle" id="stream-toggle-${idx}" onclick="toggleRaw(${idx})">Raw SSE</button>
+              <button class="btn-copy-resp" id="btn-copy-stream-${idx}" onclick="copyStream(${idx})">&#128203; Copy</button>
+            </div>
+            <div class="stream-output" id="stream-output-${idx}"></div>
+            <pre class="stream-raw" id="stream-raw-${idx}"></pre>
+          </div>` : `
+          <div class="response-panel" id="resp-${idx}">
+            <div class="response-bar">
+              <span class="status-code" id="resp-status-${idx}"></span>
+              <span class="response-time" id="resp-time-${idx}"></span>
+              <span class="spacer"></span>
+              <button class="btn-copy-resp" id="btn-copy-resp-${idx}" onclick="copyResponse(${idx})">&#128203; Copy</button>
+            </div>
+            <pre class="response-body" id="resp-body-${idx}"></pre>
+          </div>`}
+        </div>
+      </div>
+    </div>`;
+}
+
+function escHtml(s) { return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function escCurl(s) { return escHtml(s); }
+
+function renderAll() {
+  let mainHtml = "", sideHtml = "", idx = 0;
+  ENDPOINTS.forEach(sec => {
+    const secId = sec.section.toLowerCase().replace(/\s+/g, "-");
+    mainHtml += `<h2 class="section-title" id="sec-${secId}">${sec.section}</h2>`;
+    sideHtml += `<h3>${sec.section}</h3>`;
+    sec.endpoints.forEach(ep => {
+      mainHtml += renderEndpoint(ep, idx);
+      const m = ep.method.toLowerCase();
+      sideHtml += `<a href="#ep-${idx}"><span class="method-dot" style="background:var(--${m})"></span>${ep.summary}</a>`;
+      idx++;
+    });
+  });
+  $id("endpoints").innerHTML = mainHtml;
+  $id("sidebar").innerHTML = sideHtml;
+}
+
+/* ── Interactions ── */
+let flatEps = [];
+ENDPOINTS.forEach(s => s.endpoints.forEach(e => flatEps.push(e)));
+
+function toggleEp(idx) {
+  const card = $id("ep-" + idx);
+  card.classList.toggle("open");
+  refreshCurl(idx);
+  // Auto-fill user_id fields when opening a card
+  if (card.classList.contains("open") && resolvedUserId) {
+    setTimeout(() => autoFillUserIds(), 0);
+  }
+}
+
+function refreshCurl(idx) {
+  const el = $id("curl-" + idx);
+  if (el) el.innerHTML = escCurl(buildCurl(flatEps[idx]));
+}
+
+function copyCurl(idx) {
+  refreshCurl(idx);
+  navigator.clipboard.writeText(buildCurl(flatEps[idx])).then(() => toast("Copied to clipboard"));
+}
+
+function copyResponse(idx) {
+  const bodyEl = $id("resp-body-" + idx);
+  if (!bodyEl || !bodyEl.textContent) { toast("No response to copy"); return; }
+  const btn = $id("btn-copy-resp-" + idx);
+  navigator.clipboard.writeText(bodyEl.textContent).then(() => {
+    btn.classList.add("copied");
+    btn.innerHTML = "&#10003; Copied";
+    setTimeout(() => { btn.classList.remove("copied"); btn.innerHTML = "&#128203; Copy"; }, 1500);
+    toast("Response copied");
+  });
+}
+
+function toggleRaw(idx) {
+  const raw = $id("stream-raw-" + idx);
+  const btn = $id("stream-toggle-" + idx);
+  raw.classList.toggle("visible");
+  btn.classList.toggle("active");
+}
+
+function copyStream(idx) {
+  const out = $id("stream-output-" + idx);
+  if (!out || !out.textContent) { toast("No response to copy"); return; }
+  const btn = $id("btn-copy-stream-" + idx);
+  navigator.clipboard.writeText(out.textContent).then(() => {
+    btn.classList.add("copied");
+    btn.innerHTML = "&#10003; Copied";
+    setTimeout(() => { btn.classList.remove("copied"); btn.innerHTML = "&#128203; Copy"; }, 1500);
+    toast("Response copied");
+  });
+}
+
+async function sendStreamReq(idx) {
+  const ep = flatEps[idx];
+  const g = globals();
+
+  const errors = validateEndpoint(idx);
+  if (errors.length) { toast("Required: " + errors.join(", ")); return; }
+
+  if (!proxyAvailable) {
+    copyCurl(idx);
+    const pasteEl = $id("paste-" + idx);
+    const fmtBtn = $id("btn-fmt-" + idx);
+    pasteEl.classList.add("visible");
+    fmtBtn.classList.add("visible");
+    pasteEl.focus();
+    toast("Curl copied! Paste terminal output below");
+    return;
+  }
+
+  const panel = $id("stream-" + idx);
+  const statusEl = $id("stream-status-" + idx);
+  const metaEl = $id("stream-meta-" + idx);
+  const outEl = $id("stream-output-" + idx);
+  const rawEl = $id("stream-raw-" + idx);
+
+  panel.classList.add("visible");
+  statusEl.textContent = "STREAMING";
+  statusEl.className = "stream-status streaming";
+  metaEl.textContent = "0 tokens";
+  outEl.innerHTML = '<span class="cursor"></span>';
+  rawEl.textContent = "";
+
+  const url = resolvedUrl(ep);
+  const body = resolvedBody(ep);
+
+  const t0 = performance.now();
+  let tokenCount = 0;
+  let assembledText = "";
+  let finalData = null;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "x-api-key": g.apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      statusEl.textContent = res.status;
+      statusEl.className = "stream-status err";
+      metaEl.textContent = Math.round(performance.now() - t0) + " ms";
+      outEl.textContent = errText;
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop(); // keep incomplete line in buffer
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data: ")) continue;
+
+        const jsonStr = trimmed.slice(6);
+        rawEl.textContent += trimmed + "\n";
+
+        try {
+          const chunk = JSON.parse(jsonStr);
+          const token = chunk.current_token;
+
+          if (token === "[DONE]") {
+            // Final chunk with full text and metadata
+            finalData = chunk;
+            assembledText = chunk.text || assembledText;
+          } else if (token) {
+            assembledText += token;
+            tokenCount++;
+            // Update live display — remove cursor, add token, re-add cursor
+            outEl.innerHTML = escHtml(assembledText) + '<span class="cursor"></span>';
+            metaEl.textContent = tokenCount + " tokens";
+          }
+        } catch {}
+      }
+    }
+
+    // Done streaming
+    const ms = Math.round(performance.now() - t0);
+    statusEl.textContent = "DONE";
+    statusEl.className = "stream-status done";
+    metaEl.textContent = tokenCount + " tokens · " + ms + " ms";
+    outEl.textContent = assembledText; // remove cursor
+
+    // Append final metadata to raw panel
+    if (finalData) {
+      rawEl.textContent += "\n── Final payload ──\n" + JSON.stringify(finalData, null, 2);
+    }
+
+  } catch (err) {
+    const ms = Math.round(performance.now() - t0);
+    statusEl.textContent = "ERR";
+    statusEl.className = "stream-status err";
+    metaEl.textContent = ms + " ms";
+    outEl.textContent = err.message + "\n\nProxy may be down. Restart with: python3 docs/serve.py";
+  }
+}
+
+function validateEndpoint(idx) {
+  const ep = flatEps[idx];
+  const g = globals();
+  const errors = [];
+
+  // Clear previous
+  document.querySelectorAll(".field-invalid").forEach(el => el.classList.remove("field-invalid"));
+
+  // API key always required
+  if (!g.apiKey) { errors.push("API key"); $id("apiKey").classList.add("field-invalid"); }
+
+  // Slug needed?
+  if ((ep.body || []).some(p => p.name === "slug" && p.req) && !g.slug) {
+    errors.push("Clone slug"); $id("slug").classList.add("field-invalid");
+  }
+
+  // Email needed?
+  const needsEmail = (ep.query || []).some(p => p.name === "email" && p.req)
+                  || (ep.body || []).some(p => (p.name === "email" || p.name === "user_email") && p.req);
+  if (needsEmail && !g.userEmail) {
+    errors.push("User email"); $id("userEmail").classList.add("field-invalid");
+  }
+
+  // Required extras (all extras are required unless explicitly req: false)
+  (ep.extra || []).forEach(e => {
+    if (e.req !== false) {
+      const el = $id(e.id);
+      if (el && !el.value.trim()) { errors.push(e.label); el.classList.add("field-invalid"); }
+    }
+  });
+
+  return errors;
+}
+
+async function sendReq(idx) {
+  const ep = flatEps[idx];
+  // Route stream endpoints to the streaming handler
+  if (ep.stream) { sendStreamReq(idx); return; }
+  const g = globals();
+
+  // Validate required fields
+  const errors = validateEndpoint(idx);
+  if (errors.length) { toast("Required: " + errors.join(", ")); return; }
+
+  // In static mode: copy curl and show paste area instead
+  if (!proxyAvailable) {
+    copyCurl(idx);
+    const pasteEl = $id("paste-" + idx);
+    const fmtBtn = $id("btn-fmt-" + idx);
+    pasteEl.classList.add("visible");
+    fmtBtn.classList.add("visible");
+    pasteEl.focus();
+    toast("Curl copied! Paste terminal output below");
+    return;
+  }
+
+  const panel = $id("resp-" + idx);
+  const statusEl = $id("resp-status-" + idx);
+  const timeEl = $id("resp-time-" + idx);
+  const bodyEl = $id("resp-body-" + idx);
+  panel.classList.add("visible");
+  statusEl.textContent = "...";
+  statusEl.className = "status-code";
+  timeEl.textContent = "";
+  bodyEl.textContent = "Sending...";
+
+  const url = resolvedUrl(ep);
+  const body = resolvedBody(ep);
+  const opts = {
+    method: ep.method,
+    headers: { "x-api-key": g.apiKey, "Content-Type": "application/json" },
+  };
+  if (body && Object.keys(body).length > 0 && ep.method !== "GET") opts.body = JSON.stringify(body);
+
+  const t0 = performance.now();
+  try {
+    const res = await fetch(url, opts);
+    const ms = Math.round(performance.now() - t0);
+    const text = await res.text();
+    let pretty = text;
+    try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch {}
+
+    statusEl.textContent = res.status;
+    statusEl.className = "status-code " + (res.status < 300 ? "s2xx" : res.status < 500 ? "s4xx" : "s5xx");
+    timeEl.textContent = ms + " ms";
+    bodyEl.textContent = pretty;
+  } catch (err) {
+    const ms = Math.round(performance.now() - t0);
+    statusEl.textContent = "ERR";
+    statusEl.className = "status-code serr";
+    timeEl.textContent = ms + " ms";
+    bodyEl.textContent = err.message + "\n\nProxy may be down. Restart with: python3 docs/serve.py";
+  }
+}
+
+function formatPaste(idx) {
+  const pasteEl = $id("paste-" + idx);
+  const raw = pasteEl.value.trim();
+  if (!raw) { toast("Paste your terminal output first"); return; }
+
+  const panel = $id("resp-" + idx);
+  const statusEl = $id("resp-status-" + idx);
+  const timeEl = $id("resp-time-" + idx);
+  const bodyEl = $id("resp-body-" + idx);
+  panel.classList.add("visible");
+
+  // Try to extract HTTP status from curl output (e.g. "HTTP/2 200" or "HTTP/1.1 422")
+  const statusMatch = raw.match(/HTTP\/[\d.]+ (\d{3})/);
+  const code = statusMatch ? parseInt(statusMatch[1], 10) : 0;
+
+  // Try to find JSON in the output
+  let pretty = raw;
+  const jsonMatch = raw.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+  if (jsonMatch) {
+    try { pretty = JSON.stringify(JSON.parse(jsonMatch[0]), null, 2); } catch { pretty = raw; }
+  }
+
+  if (code) {
+    statusEl.textContent = code;
+    statusEl.className = "status-code " + (code < 300 ? "s2xx" : code < 500 ? "s4xx" : "s5xx");
+  } else {
+    statusEl.textContent = "???";
+    statusEl.className = "status-code";
+  }
+  timeEl.textContent = "pasted";
+  bodyEl.textContent = pretty;
+  toast("Formatted!");
+}
+
+/* ── Init ── */
+renderAll();
+
+// Persist inputs to localStorage
+["apiKey", "slug", "userEmail"].forEach(id => {
+  const el = $id(id);
+  const saved = localStorage.getItem("delphi_" + id);
+  if (saved) el.value = saved;
+  el.addEventListener("input", () => localStorage.setItem("delphi_" + id, el.value));
+});
+
+// Refresh curls on extra-field changes, clear validation, handle manual override of auto-fill
+document.addEventListener("input", e => {
+  if (e.target.classList.contains("field-invalid")) e.target.classList.remove("field-invalid");
+  if (e.target.classList.contains("ep-extra")) {
+    // If user manually edits an auto-filled field, remove auto-fill marker
+    if (e.target.dataset.autoFilled === "yes") {
+      e.target.dataset.autoFilled = "";
+      e.target.classList.remove("auto-filled");
+    }
+    const idx = parseInt(e.target.dataset.ep, 10);
+    if (!isNaN(idx)) refreshCurl(idx);
+  }
+});
+
+// Refresh curls on global input changes & clear validation
+["apiKey", "slug", "userEmail"].forEach(id => {
+  $id(id).addEventListener("input", () => {
+    $id(id).classList.remove("field-invalid");
+    document.querySelectorAll(".endpoint.open").forEach(el => {
+      const idx = parseInt(el.id.replace("ep-", ""), 10);
+      refreshCurl(idx);
+    });
+    // Re-lookup when API key or email changes
+    if (id === "apiKey" || id === "userEmail") debouncedLookup();
+  });
+});
+
+// Initial lookup if we already have stored values
+detectProxy().then(() => {
+  updateModeBanner();
+  if (globals().apiKey && globals().userEmail) lookupUser();
+});
+</script>
+</body>
+</html>

@@ -4,9 +4,22 @@
 
 - Delphi API key(s)
 - Clone slug(s) you want to test
-- Ability to run curl or Python script
+- Python 3.8+ (for scripts and local proxy)
 
-## Minimum user info the skill needs
+## Interactive API Reference (recommended for exploration)
+
+The fastest way to explore and test the API:
+
+```bash
+make docs
+# → http://localhost:8787/api-reference.html
+```
+
+Enter your API key, clone slug, and optionally a user email in the top bar. Open any endpoint card and click **Send** to fire a live request. The `/v3/stream` endpoint streams tokens in real-time with a blinking cursor. See `README.md` for full details.
+
+## CLI usage
+
+## Minimum info the skill needs (when using Claude)
 
 The skill should ask for these if missing:
 

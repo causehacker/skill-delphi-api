@@ -6,8 +6,13 @@ A production-ready, non-technical-safe skill package for testing and troubleshoo
 
 This repo contains:
 
-- `delphi-api-safe/` - the skill source (SKILL.md + references + scripts)
-- `dist/delphi-api-safe.skill` - packaged skill file ready to import
+| Path | Purpose |
+|------|---------|
+| `delphi-api-safe/` | Skill source (SKILL.md + references + scripts) |
+| `dist/delphi-api-safe.skill` | Packaged skill file ready to import |
+| `docs/api-reference.html` | Interactive API reference with live test harness |
+| `docs/serve.py` | Local proxy server for CORS-free browser testing |
+| `scripts/run_smoke.py` | Smoke test runner |
 
 ## What this skill does
 
@@ -83,6 +88,42 @@ python3 delphi-api-safe/scripts/test_delphi_v3.py \
   --allow-write \
   --tag-name "api-test-tag" \
   --info-text "safe test note"
+```
+
+## Interactive API Reference (browser)
+
+A single-page interactive explorer for all 21 V3 endpoints with a live test harness, streaming SSE support, and curl copy/paste.
+
+### Quick start
+
+```bash
+make docs
+# → opens http://localhost:8787/api-reference.html
+```
+
+Or run directly:
+
+```bash
+python3 docs/serve.py            # default port 8787
+python3 docs/serve.py --port 9000  # custom port
+```
+
+### What it does
+
+- **21 endpoint cards** organized by section (Conversations, Questions, Users, Tags, User Info)
+- **Send button** fires requests through a local CORS proxy — responses render inline
+- **SSE streaming** for `/v3/stream` — tokens appear live with a blinking cursor, token counter, and raw SSE toggle
+- **Curl copy** on every endpoint — one click to clipboard, ready to paste in terminal
+- **Auto user lookup** — enter an email in the top bar and the `user_id` auto-resolves and fills into all endpoint cards
+- **Field validation** — required fields highlight red with a shake animation before sending
+- **Static mode fallback** — works without the proxy (copy curl, paste output, click Format)
+- **Zero dependencies** — one HTML file + one Python file, no npm/node/build step
+
+### Stopping
+
+```bash
+make docs-stop
+# or Ctrl+C in the terminal running serve.py
 ```
 
 ## Security policy
