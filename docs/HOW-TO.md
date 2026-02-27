@@ -79,12 +79,17 @@ python3 delphi-api-safe/scripts/test_delphi_v3.py \
 ## Endpoint coverage in full mode
 
 - `/v3/conversation`, `/v3/stream`
+- `/v3/conversation/list` (requires `--user-email`)
+- `/v3/conversation/{id}/history`
+- `/v3/questions`
 - `/v3/users/lookup`
 - `/v3/users/{user_id}/flywheel`
 - `/v3/users/{user_id}/tier`
 - `/v3/users/{user_id}/usage`
 - `/v3/tags`
 - plus write endpoints when `--allow-write` is provided:
+  - `PUT /v3/conversation/{id}/title`
+  - `DELETE /v3/conversation/{id}`
   - `PATCH /v3/users/{user_id}`
   - `POST /v3/users/{user_id}/revoke`
   - `POST /v3/users/{user_id}/activate`

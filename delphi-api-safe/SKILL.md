@@ -11,7 +11,12 @@ Run Delphi V3 API tests in a non-destructive, user-safe way. Prefer reproducible
 
 - Use **V3 endpoints only**. Supported/tested coverage includes:
   - `POST /v3/conversation`
-  - `POST /v3/stream`
+  - `POST /v3/stream` (supports optional `file_urls`)
+  - `GET /v3/conversation/list?email=`
+  - `GET /v3/conversation/{conversation_id}/history`
+  - `PUT /v3/conversation/{conversation_id}/title`
+  - `DELETE /v3/conversation/{conversation_id}`
+  - `GET /v3/questions`
   - `POST /v3/users/lookup`
   - `GET /v3/users/{user_id}/flywheel`
   - `GET /v3/users/{user_id}/tier`
@@ -106,6 +111,43 @@ curl -i -N -X POST "https://api.delphi.ai/v3/stream" \
   -H "x-api-key: $DELPHI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"message":"<prompt>","slug":"<slug>","conversation_id":"<cid>"}'
+```
+
+### List conversations
+
+```bash
+curl -sS -X GET "https://api.delphi.ai/v3/conversation/list?email=<user-email>" \
+  -H "x-api-key: $DELPHI_API_KEY"
+```
+
+### Get conversation history
+
+```bash
+curl -sS -X GET "https://api.delphi.ai/v3/conversation/<cid>/history?include_citations=false" \
+  -H "x-api-key: $DELPHI_API_KEY"
+```
+
+### Update conversation title
+
+```bash
+curl -sS -X PUT "https://api.delphi.ai/v3/conversation/<cid>/title" \
+  -H "x-api-key: $DELPHI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"New Title"}'
+```
+
+### Delete conversation (soft-delete)
+
+```bash
+curl -sS -X DELETE "https://api.delphi.ai/v3/conversation/<cid>" \
+  -H "x-api-key: $DELPHI_API_KEY"
+```
+
+### Get suggested questions
+
+```bash
+curl -sS -X GET "https://api.delphi.ai/v3/questions?type=pinned&count=5&randomize=false" \
+  -H "x-api-key: $DELPHI_API_KEY"
 ```
 
 ### One-liner test (single clone)

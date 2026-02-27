@@ -104,7 +104,7 @@ def test_user_endpoints(api_key: str, user_id: str, allow_write: bool, tag_name:
                 "POST",
                 f"/users/{user_id}/info",
                 api_key,
-                {"text": info_text, "source": "API", "info_type": "JOURNAL"},
+                {"info": info_text, "source": "API", "info_type": "JOURNAL"},
             )
             info_id = None
             if st == "200":
@@ -117,6 +117,34 @@ def test_user_endpoints(api_key: str, user_id: str, allow_write: bool, tag_name:
                 dst, dbody = http_json("DELETE", f"/users/{user_id}/info/{info_id}", api_key)
                 out["info_delete"] = {"http": dst, "pass": dst == "200", "preview": dbody[:180]}
 
+    return out
+
+
+def test_conversation_endpoints(api_key: str, cid: Optional[str], user_email: Optional[str], allow_write: bool) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+
+    if user_email:
+        st, body = http_json("GET", f"/conversation/list?email={user_email}", api_key)
+        out["conversation_list"] = {"http": st, "pass": st == "200", "preview": body[:180]}
+
+    if cid:
+        st, body = http_json("GET", f"/conversation/{cid}/history?include_citations=false", api_key)
+        out["conversation_history"] = {"http": st, "pass": st == "200", "preview": body[:180]}
+
+        if allow_write:
+            st, body = http_json("PUT", f"/conversation/{cid}/title", api_key, {"title": "API Test Title"})
+            out["conversation_title"] = {"http": st, "pass": st == "200", "preview": body[:180]}
+
+            st, body = http_json("DELETE", f"/conversation/{cid}", api_key)
+            out["conversation_delete"] = {"http": st, "pass": st == "200", "preview": body[:180]}
+
+    return out
+
+
+def test_questions(api_key: str) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    st, body = http_json("GET", "/questions?type=pinned&count=5&randomize=false", api_key)
+    out["questions_get"] = {"http": st, "pass": st == "200", "preview": body[:180]}
     return out
 
 
@@ -175,6 +203,14 @@ def main() -> None:
         output["chat"] = test_chat(args.api_key, args.slug, args.message)
 
     if args.mode == "full":
+        cid = output.get("chat", {}).get("conversation_id")
+
+        output["questions"] = test_questions(args.api_key)
+
+        output["conversations"] = test_conversation_endpoints(
+            args.api_key, cid, args.user_email, args.allow_write
+        )
+
         lookup_tags = test_lookup_and_tags(args.api_key, args.user_email, args.allow_write, args.tag_name)
         output["lookup_tags"] = lookup_tags
 
@@ -195,6 +231,10 @@ def main() -> None:
             "stream_http": c.get("stream_http"),
         }
 
+    if "questions" in output:
+        output["questions_summary"] = summarize(output["questions"])
+    if "conversations" in output:
+        output["conversations_summary"] = summarize(output["conversations"])
     if "lookup_tags" in output:
         output["lookup_tags_summary"] = summarize(output["lookup_tags"])
     if "users" in output and isinstance(output["users"], dict):
