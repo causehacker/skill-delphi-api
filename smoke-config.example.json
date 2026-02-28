@@ -1,7 +1,7 @@
 {
   "account": "My Delphi Account",
   "api_key": "REPLACE_WITH_DELPHI_API_KEY",
-  "slug": "REPLACE_WITH_CLONE_SLUG",
+  "slug": "",
   "mode": "chat",
   "message": "Please answer in one short sentence to test stream.",
   "user_email": "",

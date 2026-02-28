@@ -47,9 +47,10 @@ Collect the minimum needed for the requested task:
 2. **Credential source**:
    - API key(s), or
    - permission to discover from their provided files/context
-3. **Target clone(s)**:
+3. **Target clone(s)** (optional):
    - exact slug(s), or
    - clone names if discovery is requested
+   - omit to use account default clone
 4. **Test prompt** (optional): use a default only if user does not care
 
 If any required input is missing, ask concise follow-ups. See `references/intake-checklist.md`.
@@ -66,7 +67,7 @@ When starting a new Delphi API task, ask this exact short intake first if anythi
 2. What API key(s) should I use?
    - paste key(s), or
    - approve using keys already shared in this chat/context
-3. Which clone slug(s) should I test?
+3. Which clone slug(s) should I test? (optional — leave blank for account default)
 4. Any output preferences?
    - redact IDs/keys
    - markdown table
@@ -101,7 +102,8 @@ If all four are already present, do not ask again.
 curl -sS -X POST "https://api.delphi.ai/v3/conversation" \
   -H "x-api-key: $DELPHI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"slug":"<slug>"}'
+  -d '{}'
+# Optional: include "slug":"<slug>" in body to target a specific clone
 ```
 
 ### Stream message
@@ -110,7 +112,8 @@ curl -sS -X POST "https://api.delphi.ai/v3/conversation" \
 curl -i -N -X POST "https://api.delphi.ai/v3/stream" \
   -H "x-api-key: $DELPHI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"message":"<prompt>","slug":"<slug>","conversation_id":"<cid>"}'
+  -d '{"message":"<prompt>","conversation_id":"<cid>"}'
+# Optional: include "slug":"<slug>" in body to target a specific clone
 ```
 
 ### List conversations
@@ -150,18 +153,19 @@ curl -sS -X GET "https://api.delphi.ai/v3/questions?type=pinned&count=5&randomiz
   -H "x-api-key: $DELPHI_API_KEY"
 ```
 
-### One-liner test (single clone)
+### One-liner test
 
 ```bash
 CID=$(curl -sS -X POST "https://api.delphi.ai/v3/conversation" \
   -H "x-api-key: $DELPHI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"slug":"<slug>"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["conversation_id"])') && \
+  -d '{}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["conversation_id"])') && \
 echo "CID=$CID" && \
 curl -i -N -X POST "https://api.delphi.ai/v3/stream" \
   -H "x-api-key: $DELPHI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d "{\"message\":\"<prompt>\",\"slug\":\"<slug>\",\"conversation_id\":\"$CID\"}"
+  -d "{\"message\":\"<prompt>\",\"conversation_id\":\"$CID\"}"
+# Add "slug":"<slug>" to both -d payloads to target a specific clone
 ```
 
 ## Non-technical UX rules
@@ -186,7 +190,8 @@ curl -i -N -X POST "https://api.delphi.ai/v3/stream" \
 For reliable repeated testing, run chat mode:
 
 ```bash
-python3 scripts/test_delphi_v3.py --api-key "$DELPHI_API_KEY" --slug "<slug>" --mode chat
+python3 scripts/test_delphi_v3.py --api-key "$DELPHI_API_KEY" --mode chat
+# Optional: add --slug "<slug>" to target a specific clone
 ```
 
 Run full mode (users/tags/info included):
@@ -194,9 +199,9 @@ Run full mode (users/tags/info included):
 ```bash
 python3 scripts/test_delphi_v3.py \
   --api-key "$DELPHI_API_KEY" \
-  --slug "<slug>" \
   --mode full \
   --user-email "<real-user-email>"
+# Optional: add --slug "<slug>" to target a specific clone
 ```
 
 Enable write endpoint tests only with explicit consent:
@@ -204,12 +209,12 @@ Enable write endpoint tests only with explicit consent:
 ```bash
 python3 scripts/test_delphi_v3.py \
   --api-key "$DELPHI_API_KEY" \
-  --slug "<slug>" \
   --mode full \
   --user-email "<real-user-email>" \
   --allow-write \
   --tag-name "<tag-name>" \
   --info-text "<safe-test-note>"
+# Optional: add --slug "<slug>" to target a specific clone
 ```
 
 The script prints structured JSON suitable for incident docs.

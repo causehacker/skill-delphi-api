@@ -103,9 +103,9 @@ def main():
 
     prev_slug = existing.get("slug", "")
     if prev_slug and prev_slug != "REPLACE_WITH_CLONE_SLUG":
-        slug = ask("Clone slug", default=prev_slug)
+        slug = ask("Clone slug (optional)", default=prev_slug)
     else:
-        slug = ask("Clone slug", required=True)
+        slug = ask("Clone slug (optional, leave blank to use account default)")
 
     print()
     print(f"  {BOLD}Options{RESET}")

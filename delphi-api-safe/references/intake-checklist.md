@@ -14,9 +14,10 @@ Use this checklist before running tests.
    - API key(s), or
    - permission to use already-provided key(s)
 
-3. Which clones?
-   - exact slug(s) preferred
+3. Which clones? (optional — omit to use account default)
+   - exact slug(s) if targeting specific clones
    - if only names provided, ask whether to auto-discover slug variants
+   - leave blank to use the account's default clone
 
 4. Any constraints?
    - do not expose keys in output

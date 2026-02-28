@@ -35,7 +35,7 @@ The skill always requests missing required info before acting. It will ask for:
 
 1. Goal (single test, multi-account sweep, incident report)
 2. Credentials (API key(s) or permission to use known keys)
-3. Targets (clone slug(s) or names for discovery)
+3. Targets (clone slug(s) — optional, uses account default if omitted)
 4. Constraints (redaction, timestamp inclusion, output style)
 
 ## Local usage (script)
@@ -63,14 +63,14 @@ make smoke-full
 ```
 
 
-Chat flow test (single clone):
+Chat flow test:
 
 ```bash
 python3 delphi-api-safe/scripts/test_delphi_v3.py \
   --api-key "$DELPHI_API_KEY" \
-  --slug "jc3" \
   --account "Jim Carter" \
   --mode chat
+# Optional: add --slug "jc3" to target a specific clone
 ```
 
 Full endpoint sweep (read-only):
@@ -78,9 +78,9 @@ Full endpoint sweep (read-only):
 ```bash
 python3 delphi-api-safe/scripts/test_delphi_v3.py \
   --api-key "$DELPHI_API_KEY" \
-  --slug "jc3" \
   --mode full \
   --user-email "real-user@example.com"
+# Optional: add --slug "jc3" to target a specific clone
 ```
 
 Full endpoint sweep (includes writes, explicit opt-in):
@@ -88,12 +88,12 @@ Full endpoint sweep (includes writes, explicit opt-in):
 ```bash
 python3 delphi-api-safe/scripts/test_delphi_v3.py \
   --api-key "$DELPHI_API_KEY" \
-  --slug "jc3" \
   --mode full \
   --user-email "real-user@example.com" \
   --allow-write \
   --tag-name "api-test-tag" \
   --info-text "safe test note"
+# Optional: add --slug "jc3" to target a specific clone
 ```
 
 ## Interactive API Reference (browser)

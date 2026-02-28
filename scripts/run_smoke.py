@@ -31,16 +31,12 @@ def main():
 
     if not api_key or api_key == "REPLACE_WITH_DELPHI_API_KEY":
         die("Please set api_key in smoke-config.json")
-    if not slug or slug == "REPLACE_WITH_CLONE_SLUG":
-        die("Please set slug in smoke-config.json")
 
     cmd = [
         "python3",
         "delphi-api-safe/scripts/test_delphi_v3.py",
         "--api-key",
         api_key,
-        "--slug",
-        slug,
         "--account",
         account,
         "--message",
@@ -48,6 +44,9 @@ def main():
         "--mode",
         args.mode,
     ]
+
+    if slug and slug != "REPLACE_WITH_CLONE_SLUG":
+        cmd += ["--slug", slug]
 
     if args.mode == "full":
         user_email = cfg.get("user_email", "").strip()

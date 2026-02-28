@@ -29,8 +29,11 @@ def http_json(method: str, path: str, api_key: str, payload: Optional[dict] = No
     return status.strip(), body.strip()
 
 
-def test_chat(api_key: str, slug: str, message: str) -> Dict[str, Any]:
-    c_status, c_body = http_json("POST", "/conversation", api_key, {"slug": slug})
+def test_chat(api_key: str, slug: Optional[str], message: str) -> Dict[str, Any]:
+    conv_body: dict = {}
+    if slug:
+        conv_body["slug"] = slug
+    c_status, c_body = http_json("POST", "/conversation", api_key, conv_body)
     cid = None
     if c_status == "200":
         try:
@@ -50,11 +53,14 @@ def test_chat(api_key: str, slug: str, message: str) -> Dict[str, Any]:
             "conversation_body": c_body[:240],
         }
 
+    stream_body: dict = {"message": message, "conversation_id": cid}
+    if slug:
+        stream_body["slug"] = slug
     s_status, s_body = http_json(
         "POST",
         "/stream",
         api_key,
-        {"message": message, "slug": slug, "conversation_id": cid},
+        stream_body,
         stream=True,
     )
     s_ok = s_status == "200" and "data:" in s_body and "[DONE]" in s_body
@@ -199,8 +205,6 @@ def main() -> None:
     output: Dict[str, Any] = {"account": args.account, "mode": args.mode}
 
     if args.mode in ("chat", "full"):
-        if not args.slug:
-            raise SystemExit("--slug is required for mode chat/full")
         output["chat"] = test_chat(args.api_key, args.slug, args.message)
 
     if args.mode == "full":

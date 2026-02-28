@@ -5,11 +5,13 @@ This file captures endpoint behavior learned from real tests.
 ## Conversations
 
 - `POST /v3/conversation`
-  - Body: `{"slug": "<slug>", "user_email": "<optional>"}`
+  - Body: `{"slug": "<optional>", "user_email": "<optional>"}`
+  - `slug` is optional — omit to use account default clone.
   - Expected: `200` + `conversation_id`, `created_at`, `initial_message`
 
 - `POST /v3/stream`
-  - Body: `{"conversation_id": "<cid>", "message": "<text>", "slug": "<slug>", "file_urls": ["<optional>"]}`
+  - Body: `{"conversation_id": "<cid>", "message": "<text>", "slug": "<optional>", "file_urls": ["<optional>"]}`
+  - `slug` is optional — omit to use account default clone.
   - Expected: `200` + SSE `data:` chunks + `[DONE]`
   - Known issue: some clones return `500 Internal Server Error` while others pass.
   - `file_urls` is optional; omit for text-only messages.

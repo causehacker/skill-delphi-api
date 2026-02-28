@@ -15,7 +15,7 @@ Copy and paste:
 ```text
 Use the delphi-api-safe skill.
 Run in safe non-technical mode.
-First, ask me only for missing required inputs (goal, API key(s), clone slug(s), output preference).
+First, ask me only for missing required inputs (goal, API key(s), output preference). Clone slug is optional.
 Do self-discovery for anything already present in this chat.
 Do not invent any emails, keys, or slugs.
 Then run the test and give me a plain-English PASS/FAIL summary plus a table.
@@ -28,7 +28,7 @@ Tell Claude:
 ```text
 Goal: test one clone.
 API key: <paste key>
-Slug: <paste slug>
+Slug: <paste slug> (optional — omit to use account default)
 Output: plain English + table.
 ```
 
@@ -39,7 +39,7 @@ Tell Claude:
 ```text
 Goal: full V3 endpoint sweep.
 API key: <paste key>
-Slug: <paste slug>
+Slug: <paste slug> (optional — omit to use account default)
 User email for lookup: <real email>
 Read-only only.
 ```

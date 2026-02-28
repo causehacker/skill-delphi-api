@@ -330,7 +330,7 @@
   <div class="logo">Delphi<span>V3 API</span></div>
   <div class="fields">
     <input id="apiKey" type="password" placeholder="x-api-key" spellcheck="false">
-    <input id="slug" type="text" placeholder="clone-slug" spellcheck="false">
+    <input id="slug" type="text" placeholder="clone-slug (optional)" spellcheck="false">
     <input id="userEmail" type="email" placeholder="user email (optional)" spellcheck="false">
   </div>
   <div id="resolvedUser" class="resolved-user" style="display:none">
@@ -402,29 +402,39 @@ const ENDPOINTS = [
   { section: "Conversations", endpoints: [
     { method: "POST", path: "/v3/conversation", summary: "Create conversation", desc: "Start a new conversation and get the initial greeting.",
       body: [
-        { name: "slug", type: "string", req: true, desc: "Clone slug" },
+        { name: "slug", type: "string", req: false, desc: "Clone slug (optional — omit to use account default)" },
         { name: "user_email", type: "string", req: false, desc: "Associate with a user" },
       ],
       extra: [
+        { id: "conv_slug", placeholder: "slug", label: "Slug", req: false, global: "slug" },
         { id: "conv_user_email", placeholder: "user_email", label: "User Email", req: false, global: "userEmail" },
       ],
-      bodyFn: (g, ex) => ({ slug: g.slug, ...(ex.conv_user_email ? { user_email: ex.conv_user_email } : {}) })
+      bodyFn: (g, ex) => {
+        const b = {};
+        const s = (ex && ex.conv_slug) || g.slug;
+        if (s) b.slug = s;
+        if (ex.conv_user_email) b.user_email = ex.conv_user_email;
+        return b;
+      }
     },
     { method: "POST", path: "/v3/stream", summary: "Stream response (SSE)", desc: "Send a message and receive a streamed SSE reply. Each SSE chunk contains a <code>current_token</code>. The final chunk (where <code>current_token</code> is <code>[DONE]</code>) includes the full <code>text</code>, <code>id</code>, <code>citations</code>, and <code>questions</code>.",
       stream: true,
       body: [
         { name: "conversation_id", type: "string", req: true, desc: "From /v3/conversation" },
         { name: "message", type: "string", req: true, desc: "User message text" },
-        { name: "slug", type: "string", req: true, desc: "Clone slug" },
+        { name: "slug", type: "string", req: false, desc: "Clone slug (optional — omit to use account default)" },
         { name: "file_urls", type: "string[]", req: false, desc: "Optional file attachments (comma-separated URLs)" },
       ],
       extra: [
         { id: "stream_cid", placeholder: "conversation_id", label: "Conversation ID" },
         { id: "stream_msg", placeholder: "Hello!", label: "Message" },
+        { id: "stream_slug", placeholder: "slug", label: "Slug", req: false, global: "slug" },
         { id: "stream_files", placeholder: "file_urls", label: "File URLs (comma-sep)", req: false },
       ],
       bodyFn: (g, ex) => {
-        const b = { conversation_id: ex.stream_cid || "<conversation_id>", message: ex.stream_msg || "Hello!", slug: g.slug };
+        const b = { conversation_id: ex.stream_cid || "<conversation_id>", message: ex.stream_msg || "Hello!" };
+        const s = (ex && ex.stream_slug) || g.slug;
+        if (s) b.slug = s;
         if (ex.stream_files) b.file_urls = ex.stream_files.split(",").map(u => u.trim()).filter(Boolean);
         return b;
       }
@@ -1062,10 +1072,7 @@ function validateEndpoint(idx) {
   // API key always required
   if (!g.apiKey) { errors.push("API key"); $id("apiKey").classList.add("field-invalid"); }
 
-  // Slug needed?
-  if ((ep.body || []).some(p => p.name === "slug" && p.req) && !g.slug) {
-    errors.push("Clone slug"); $id("slug").classList.add("field-invalid");
-  }
+  // Slug is optional — no validation needed
 
   // Email needed?
   const needsEmail = (ep.query || []).some(p => p.name === "email" && p.req)
