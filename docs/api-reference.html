@@ -309,6 +309,10 @@
     border-color: var(--get) !important;
     background: var(--get-bg) !important;
   }
+  select.ep-extra.auto-filled {
+    border-color: var(--get) !important;
+    background: var(--get-bg) !important;
+  }
 
   /* Responsive */
   @media (max-width: 860px) {
@@ -385,6 +389,15 @@ function updateModeBanner() {
 }
 
 /* ── Endpoint Definitions ── */
+/* Each `extra` field maps to an input row. Fields have:
+   - id: unique DOM id
+   - placeholder: placeholder text (also used as data-param for auto-fill)
+   - label: display label
+   - type: "string" (default), "boolean", "integer", "select"
+   - options: array of strings for select type
+   - req: true (default) or false
+   - global: "slug"|"userEmail" — auto-populates from top bar
+*/
 const ENDPOINTS = [
   { section: "Conversations", endpoints: [
     { method: "POST", path: "/v3/conversation", summary: "Create conversation", desc: "Start a new conversation and get the initial greeting.",
@@ -392,7 +405,10 @@ const ENDPOINTS = [
         { name: "slug", type: "string", req: true, desc: "Clone slug" },
         { name: "user_email", type: "string", req: false, desc: "Associate with a user" },
       ],
-      bodyFn: g => ({ slug: g.slug, ...(g.userEmail ? { user_email: g.userEmail } : {}) })
+      extra: [
+        { id: "conv_user_email", placeholder: "user_email", label: "User Email", req: false, global: "userEmail" },
+      ],
+      bodyFn: (g, ex) => ({ slug: g.slug, ...(ex.conv_user_email ? { user_email: ex.conv_user_email } : {}) })
     },
     { method: "POST", path: "/v3/stream", summary: "Stream response (SSE)", desc: "Send a message and receive a streamed SSE reply. Each SSE chunk contains a <code>current_token</code>. The final chunk (where <code>current_token</code> is <code>[DONE]</code>) includes the full <code>text</code>, <code>id</code>, <code>citations</code>, and <code>questions</code>.",
       stream: true,
@@ -400,26 +416,43 @@ const ENDPOINTS = [
         { name: "conversation_id", type: "string", req: true, desc: "From /v3/conversation" },
         { name: "message", type: "string", req: true, desc: "User message text" },
         { name: "slug", type: "string", req: true, desc: "Clone slug" },
-        { name: "file_urls", type: "string[]", req: false, desc: "Optional file attachments" },
+        { name: "file_urls", type: "string[]", req: false, desc: "Optional file attachments (comma-separated URLs)" },
       ],
-      extra: [{ id: "stream_cid", placeholder: "conversation_id", label: "Conversation ID" }, { id: "stream_msg", placeholder: "Hello!", label: "Message" }],
-      bodyFn: (g, ex) => ({ conversation_id: ex.stream_cid || "<conversation_id>", message: ex.stream_msg || "Hello!", slug: g.slug })
+      extra: [
+        { id: "stream_cid", placeholder: "conversation_id", label: "Conversation ID" },
+        { id: "stream_msg", placeholder: "Hello!", label: "Message" },
+        { id: "stream_files", placeholder: "file_urls", label: "File URLs (comma-sep)", req: false },
+      ],
+      bodyFn: (g, ex) => {
+        const b = { conversation_id: ex.stream_cid || "<conversation_id>", message: ex.stream_msg || "Hello!", slug: g.slug };
+        if (ex.stream_files) b.file_urls = ex.stream_files.split(",").map(u => u.trim()).filter(Boolean);
+        return b;
+      }
     },
     { method: "GET", path: "/v3/conversation/list", summary: "List conversations", desc: "List all conversations for a user under this clone.",
       query: [{ name: "email", type: "string", req: true, desc: "User email address" }],
-      queryFn: g => `?email=${encodeURIComponent(g.userEmail || "<user-email>")}`
+      extra: [
+        { id: "convlist_email", placeholder: "email", label: "Email", global: "userEmail" },
+      ],
+      queryFn: (g, ex) => `?email=${encodeURIComponent((ex && ex.convlist_email) || g.userEmail || "<user-email>")}`
     },
     { method: "GET", path: "/v3/conversation/{conversation_id}/history", summary: "Get conversation history", desc: "Retrieve message history for a conversation, with optional citations.",
       pathParams: [{ name: "conversation_id", desc: "Conversation UUID" }],
       query: [{ name: "include_citations", type: "boolean", req: false, desc: "Include source citations (default: false)" }],
-      extra: [{ id: "hist_cid", placeholder: "conversation_id", label: "Conversation ID" }],
-      queryFn: () => "?include_citations=false",
+      extra: [
+        { id: "hist_cid", placeholder: "conversation_id", label: "Conversation ID" },
+        { id: "hist_cite", placeholder: "include_citations", label: "Include Citations", type: "select", options: ["false", "true"], req: false },
+      ],
+      queryFn: (g, ex) => `?include_citations=${(ex && ex.hist_cite) || "false"}`,
       pathFn: (g, ex) => `/v3/conversation/${ex.hist_cid || "<conversation_id>"}/history`
     },
     { method: "PUT", path: "/v3/conversation/{conversation_id}/title", summary: "Update conversation title", desc: "Set a new title for a conversation (1-500 chars).",
       pathParams: [{ name: "conversation_id", desc: "Conversation UUID" }],
       body: [{ name: "title", type: "string", req: true, desc: "New title (1-500 chars)" }],
-      extra: [{ id: "title_cid", placeholder: "conversation_id", label: "Conversation ID" }, { id: "title_val", placeholder: "New Title", label: "Title" }],
+      extra: [
+        { id: "title_cid", placeholder: "conversation_id", label: "Conversation ID" },
+        { id: "title_val", placeholder: "New Title", label: "Title" },
+      ],
       pathFn: (g, ex) => `/v3/conversation/${ex.title_cid || "<conversation_id>"}/title`,
       bodyFn: (g, ex) => ({ title: ex.title_val || "New Title" })
     },
@@ -436,13 +469,27 @@ const ENDPOINTS = [
         { name: "count", type: "integer", req: false, desc: "1-100 (default: 5)" },
         { name: "randomize", type: "boolean", req: false, desc: "Randomize order (default: false)" },
       ],
-      queryFn: () => "?type=pinned&count=5&randomize=false"
+      extra: [
+        { id: "q_type", placeholder: "type", label: "Type", type: "select", options: ["pinned", "unpinned", "all"], req: false },
+        { id: "q_count", placeholder: "count", label: "Count", type: "integer", req: false },
+        { id: "q_rand", placeholder: "randomize", label: "Randomize", type: "select", options: ["false", "true"], req: false },
+      ],
+      queryFn: (g, ex) => {
+        const parts = [];
+        parts.push("type=" + ((ex && ex.q_type) || "pinned"));
+        parts.push("count=" + ((ex && ex.q_count) || "5"));
+        parts.push("randomize=" + ((ex && ex.q_rand) || "false"));
+        return "?" + parts.join("&");
+      }
     },
   ]},
   { section: "Users", endpoints: [
     { method: "POST", path: "/v3/users/lookup", summary: "Lookup user by email", desc: "Resolve an email address to a user_id. May auto-create for whitelisted keys.",
       body: [{ name: "email", type: "string", req: true, desc: "User email" }],
-      bodyFn: g => ({ email: g.userEmail || "<user-email>" })
+      extra: [
+        { id: "lookup_email", placeholder: "email", label: "Email", global: "userEmail" },
+      ],
+      bodyFn: (g, ex) => ({ email: (ex && ex.lookup_email) || g.userEmail || "<user-email>" })
     },
     { method: "GET", path: "/v3/users/{user_id}/flywheel", summary: "Get user flywheel data", desc: "Complete user profile as shown in the admin audience tab.",
       pathParams: [{ name: "user_id", desc: "User UUID" }],
@@ -468,9 +515,24 @@ const ENDPOINTS = [
         { name: "call_opt_in", type: "boolean", req: false, desc: "Call campaign opt-in" },
         { name: "tier", type: "string", req: false, desc: "PUBLIC | INTERNAL" },
       ],
-      extra: [{ id: "upd_uid", placeholder: "user_id", label: "User ID" }, { id: "upd_name", placeholder: "Test User", label: "Name", req: false }],
+      extra: [
+        { id: "upd_uid", placeholder: "user_id", label: "User ID" },
+        { id: "upd_name", placeholder: "name", label: "Name", req: false },
+        { id: "upd_phone", placeholder: "phone_number", label: "Phone Number", req: false },
+        { id: "upd_sms", placeholder: "sms_opt_in", label: "SMS Opt-In", type: "select", options: ["", "true", "false"], req: false },
+        { id: "upd_call", placeholder: "call_opt_in", label: "Call Opt-In", type: "select", options: ["", "true", "false"], req: false },
+        { id: "upd_tier", placeholder: "tier", label: "Tier", type: "select", options: ["", "PUBLIC", "INTERNAL"], req: false },
+      ],
       pathFn: (g, ex) => `/v3/users/${ex.upd_uid || "<user_id>"}`,
-      bodyFn: (g, ex) => ({ name: ex.upd_name || "Test User" })
+      bodyFn: (g, ex) => {
+        const b = {};
+        if (ex.upd_name) b.name = ex.upd_name;
+        if (ex.upd_phone) b.phone_number = ex.upd_phone;
+        if (ex.upd_sms) b.sms_opt_in = ex.upd_sms === "true";
+        if (ex.upd_call) b.call_opt_in = ex.upd_call === "true";
+        if (ex.upd_tier) b.tier = ex.upd_tier;
+        return b;
+      }
     },
     { method: "POST", path: "/v3/users/{user_id}/revoke", summary: "Revoke user access", desc: "Soft-delete user access. Preserves data for audit.",
       pathParams: [{ name: "user_id", desc: "User UUID" }],
@@ -492,18 +554,25 @@ const ENDPOINTS = [
         { name: "name", type: "string", req: true, desc: "Tag name" },
         { name: "color", type: "string", req: false, desc: "Color (default: 'default')" },
       ],
-      extra: [{ id: "tag_name", placeholder: "my-tag", label: "Tag Name" }],
-      bodyFn: (g, ex) => ({ name: ex.tag_name || "my-tag" })
+      extra: [
+        { id: "tag_name", placeholder: "name", label: "Tag Name" },
+        { id: "tag_color", placeholder: "color", label: "Color", req: false },
+      ],
+      bodyFn: (g, ex) => {
+        const b = { name: ex.tag_name || "my-tag" };
+        if (ex.tag_color) b.color = ex.tag_color;
+        return b;
+      }
     },
     { method: "POST", path: "/v3/users/{user_id}/tags/{tag_name}", summary: "Tag user", desc: "Apply a tag to a user. Idempotent.",
       pathParams: [{ name: "user_id", desc: "User UUID" }, { name: "tag_name", desc: "Existing tag name" }],
-      extra: [{ id: "tu_uid", placeholder: "user_id", label: "User ID" }, { id: "tu_tag", placeholder: "tag-name", label: "Tag Name" }],
+      extra: [{ id: "tu_uid", placeholder: "user_id", label: "User ID" }, { id: "tu_tag", placeholder: "tag_name", label: "Tag Name" }],
       pathFn: (g, ex) => `/v3/users/${ex.tu_uid || "<user_id>"}/tags/${ex.tu_tag || "<tag_name>"}`,
       bodyFn: () => ({})
     },
     { method: "DELETE", path: "/v3/users/{user_id}/tags/{tag_name}", summary: "Untag user", desc: "Remove a tag from a user. Idempotent.",
       pathParams: [{ name: "user_id", desc: "User UUID" }, { name: "tag_name", desc: "Tag name to remove" }],
-      extra: [{ id: "ut_uid", placeholder: "user_id", label: "User ID" }, { id: "ut_tag", placeholder: "tag-name", label: "Tag Name" }],
+      extra: [{ id: "ut_uid", placeholder: "user_id", label: "User ID" }, { id: "ut_tag", placeholder: "tag_name", label: "Tag Name" }],
       pathFn: (g, ex) => `/v3/users/${ex.ut_uid || "<user_id>"}/tags/${ex.ut_tag || "<tag_name>"}`
     },
   ]},
@@ -520,9 +589,14 @@ const ENDPOINTS = [
         { name: "info_type", type: "string", req: true, desc: "WHY_DELPHI | HOW_DELPHI | INTERESTS | PREFERENCES | PERSONAL_INFO | GOAL | JOURNAL" },
         { name: "source", type: "string", req: false, desc: "MESSAGE | MANUAL | INFERENCE | API (default: API)" },
       ],
-      extra: [{ id: "ci_uid", placeholder: "user_id", label: "User ID" }, { id: "ci_text", placeholder: "Loves hiking", label: "Info Text" }],
+      extra: [
+        { id: "ci_uid", placeholder: "user_id", label: "User ID" },
+        { id: "ci_text", placeholder: "info", label: "Info Text" },
+        { id: "ci_type", placeholder: "info_type", label: "Info Type", type: "select", options: ["JOURNAL", "WHY_DELPHI", "HOW_DELPHI", "INTERESTS", "PREFERENCES", "PERSONAL_INFO", "GOAL"] },
+        { id: "ci_source", placeholder: "source", label: "Source", type: "select", options: ["API", "MESSAGE", "MANUAL", "INFERENCE"], req: false },
+      ],
       pathFn: (g, ex) => `/v3/users/${ex.ci_uid || "<user_id>"}/info`,
-      bodyFn: (g, ex) => ({ info: ex.ci_text || "Test info", info_type: "JOURNAL", source: "API" })
+      bodyFn: (g, ex) => ({ info: ex.ci_text || "Test info", info_type: ex.ci_type || "JOURNAL", source: ex.ci_source || "API" })
     },
     { method: "DELETE", path: "/v3/users/{user_id}/info/{info_id}", summary: "Delete user info", desc: "Remove a specific info item by ID.",
       pathParams: [{ name: "user_id", desc: "User UUID" }, { name: "info_id", desc: "Info item UUID" }],
@@ -544,7 +618,14 @@ function toast(msg) {
 }
 function getExtras(ep) {
   const out = {};
-  (ep.extra || []).forEach(e => { const el = $id(e.id); if (el) out[e.id] = el.value.trim(); });
+  (ep.extra || []).forEach(e => {
+    const el = $id(e.id);
+    if (!el) return;
+    let val = el.value.trim();
+    // Type-cast based on field type
+    if (e.type === "integer" && val) val = String(parseInt(val, 10) || "");
+    out[e.id] = val;
+  });
   return out;
 }
 
@@ -557,13 +638,13 @@ function resolvedPath(ep) {
 function resolvedUrl(ep, forCurl) {
   const base = (!forCurl && proxyAvailable) ? proxyBase : DELPHI_BASE;
   let url = base + resolvedPath(ep);
-  if (ep.queryFn) url += ep.queryFn(globals());
+  if (ep.queryFn) url += ep.queryFn(globals(), getExtras(ep));
   return url;
 }
 
 function curlUrl(ep) {
   let url = DELPHI_BASE + resolvedPath(ep);
-  if (ep.queryFn) url += ep.queryFn(globals());
+  if (ep.queryFn) url += ep.queryFn(globals(), getExtras(ep));
   return url;
 }
 
@@ -686,11 +767,23 @@ function renderParamsTable(params, title) {
 
 function renderExtras(ep, idx) {
   if (!ep.extra || !ep.extra.length) return "";
-  let html = '<div class="endpoint-section"><h4>Parameters</h4><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
+  let html = '<div class="endpoint-section"><h4>Parameters</h4><div style="display:flex;flex-direction:column;gap:6px">';
   ep.extra.forEach(e => {
     const isReq = e.req !== false;
-    html += `<div style="position:relative;flex:1;min-width:140px;display:flex;align-items:center">`;
-    html += `<input id="${e.id}" type="text" placeholder="${e.placeholder}${isReq ? ' *' : ''}" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:12px" data-ep="${idx}" data-param="${e.placeholder}" class="ep-extra" data-req="${isReq}">`;
+    const reqMark = isReq ? ' *' : '';
+    html += `<div style="display:flex;align-items:center;gap:8px">`;
+    html += `<label style="min-width:120px;font-size:12px;color:var(--text-secondary);font-weight:500;text-align:right;white-space:nowrap" for="${e.id}">${e.label}${reqMark}</label>`;
+    if (e.type === "select" && e.options) {
+      html += `<select id="${e.id}" style="flex:1;min-width:0;padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:12px;background:var(--bg)" data-ep="${idx}" data-param="${e.placeholder}" class="ep-extra" data-req="${isReq}" data-type="select">`;
+      e.options.forEach((o, i) => {
+        const label = o === "" ? "(none)" : o;
+        html += `<option value="${o}"${i === 0 ? " selected" : ""}>${label}</option>`;
+      });
+      html += `</select>`;
+    } else {
+      const inputType = e.type === "integer" ? "number" : "text";
+      html += `<input id="${e.id}" type="${inputType}" placeholder="${e.placeholder}" style="flex:1;min-width:0;padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:12px" data-ep="${idx}" data-param="${e.placeholder}" class="ep-extra" data-req="${isReq}" data-type="${e.type || "string"}">`;
+    }
     html += `</div>`;
   });
   html += "</div></div>";
@@ -775,11 +868,32 @@ ENDPOINTS.forEach(s => s.endpoints.forEach(e => flatEps.push(e)));
 function toggleEp(idx) {
   const card = $id("ep-" + idx);
   card.classList.toggle("open");
-  refreshCurl(idx);
-  // Auto-fill user_id fields when opening a card
-  if (card.classList.contains("open") && resolvedUserId) {
-    setTimeout(() => autoFillUserIds(), 0);
+  if (card.classList.contains("open")) {
+    // Auto-fill global fields (email, etc) from top bar
+    autoFillGlobals(idx);
+    // Auto-fill user_id fields from resolved lookup
+    if (resolvedUserId) setTimeout(() => autoFillUserIds(), 0);
   }
+  refreshCurl(idx);
+}
+
+function autoFillGlobals(idx) {
+  const ep = flatEps[idx];
+  const g = globals();
+  (ep.extra || []).forEach(e => {
+    if (!e.global) return;
+    const el = $id(e.id);
+    if (!el) return;
+    const val = g[e.global] || "";
+    // Only auto-fill if empty or was previously auto-filled
+    if (!el.value.trim() || el.dataset.autoFilled === "yes") {
+      if (val) {
+        el.value = val;
+        el.dataset.autoFilled = "yes";
+        el.classList.add("auto-filled");
+      }
+    }
+  });
 }
 
 function refreshCurl(idx) {
@@ -964,7 +1078,15 @@ function validateEndpoint(idx) {
   (ep.extra || []).forEach(e => {
     if (e.req !== false) {
       const el = $id(e.id);
-      if (el && !el.value.trim()) { errors.push(e.label); el.classList.add("field-invalid"); }
+      if (el) {
+        const val = el.value.trim();
+        // For global fields, also check the top-bar value
+        if (!val && e.global) {
+          const gv = globals()[e.global] || "";
+          if (gv) return; // global has a value, skip validation
+        }
+        if (!val) { errors.push(e.label); el.classList.add("field-invalid"); }
+      }
     }
   });
 
@@ -1078,7 +1200,7 @@ renderAll();
 });
 
 // Refresh curls on extra-field changes, clear validation, handle manual override of auto-fill
-document.addEventListener("input", e => {
+function handleExtraChange(e) {
   if (e.target.classList.contains("field-invalid")) e.target.classList.remove("field-invalid");
   if (e.target.classList.contains("ep-extra")) {
     // If user manually edits an auto-filled field, remove auto-fill marker
@@ -1089,7 +1211,9 @@ document.addEventListener("input", e => {
     const idx = parseInt(e.target.dataset.ep, 10);
     if (!isNaN(idx)) refreshCurl(idx);
   }
-});
+}
+document.addEventListener("input", handleExtraChange);
+document.addEventListener("change", handleExtraChange);
 
 // Refresh curls on global input changes & clear validation
 ["apiKey", "slug", "userEmail"].forEach(id => {

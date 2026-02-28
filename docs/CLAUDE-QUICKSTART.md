@@ -48,9 +48,13 @@ Read-only only.
 
 If you run locally in terminal:
 
-1. Copy `smoke-config.example.json` to `smoke-config.json`
-2. Fill only `api_key` and `slug`
-3. Run:
+1. Run the setup wizard to create your config:
+
+```bash
+make setup
+```
+
+2. Run:
 
 ```bash
 make smoke

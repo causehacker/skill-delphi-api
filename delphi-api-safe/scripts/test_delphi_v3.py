@@ -166,7 +166,8 @@ def test_lookup_and_tags(api_key: str, user_email: Optional[str], allow_write: b
 
     if allow_write and tag_name:
         st, body = http_json("POST", "/tags", api_key, {"name": tag_name, "color": "#3B82F6"})
-        out["tags_create"] = {"http": st, "pass": st == "200", "preview": body[:180]}
+        # 409 = tag already exists, which is fine (proves the endpoint is working)
+        out["tags_create"] = {"http": st, "pass": st in ("200", "409"), "preview": body[:180]}
 
     out["derived_user_id"] = user_id
     return out
@@ -241,6 +242,44 @@ def main() -> None:
         output["users_summary"] = summarize(output["users"])
 
     print(json.dumps(output, indent=2))
+
+    # ── Human-readable summary table ──
+    print()
+    print("=" * 52)
+    print(f"  {'Section':<22} {'Result':<8} {'Checks'}")
+    print("-" * 52)
+
+    all_pass = True
+
+    if "chat_summary" in output:
+        cs = output["chat_summary"]
+        ok = cs["overall"] == "PASS"
+        if not ok:
+            all_pass = False
+        mark = "\033[92mPASS\033[0m" if ok else "\033[91mFAIL\033[0m"
+        print(f"  {'Chat':<22} {mark:<17} conv={cs['conversation_http']} stream={cs['stream_http']}")
+
+    for key, label in [
+        ("questions_summary", "Questions"),
+        ("conversations_summary", "Conversations"),
+        ("lookup_tags_summary", "Lookup & Tags"),
+        ("users_summary", "Users"),
+    ]:
+        if key in output:
+            s = output[key]
+            ok = s["overall"] == "PASS"
+            if not ok:
+                all_pass = False
+            mark = "\033[92mPASS\033[0m" if ok else "\033[91mFAIL\033[0m"
+            print(f"  {label:<22} {mark:<17} {s['passed']}/{s['checks']}")
+
+    print("-" * 52)
+    if all_pass:
+        print("  \033[92m\033[1mALL PASS\033[0m")
+    else:
+        print("  \033[91m\033[1mSOME FAILURES\033[0m — check JSON above for details")
+    print("=" * 52)
+    print()
 
 
 if __name__ == "__main__":

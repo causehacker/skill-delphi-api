@@ -1,12 +1,16 @@
-.PHONY: help smoke smoke-full package docs docs-stop
+.PHONY: help setup smoke smoke-full package docs docs-stop
 
 help:
 	@echo "Commands:"
+	@echo "  make setup       # Interactive wizard to create smoke-config.json"
 	@echo "  make smoke       # Chat-only health check using smoke-config.json"
 	@echo "  make smoke-full  # Full endpoint check using smoke-config.json"
 	@echo "  make package     # Rebuild dist/delphi-api-safe.skill"
 	@echo "  make docs        # Start interactive API reference at localhost:8787"
 	@echo "  make docs-stop   # Stop the API reference server"
+
+setup:
+	python3 scripts/setup.py
 
 smoke:
 	python3 scripts/run_smoke.py --config smoke-config.json --mode chat

@@ -42,9 +42,15 @@ The skill always requests missing required info before acting. It will ask for:
 
 ### Easiest local option (one command)
 
-1. Copy `smoke-config.example.json` to `smoke-config.json`
-2. Fill in your API key + slug
-3. Run:
+1. Run the setup wizard:
+
+```bash
+make setup
+```
+
+It walks you through each field and writes `smoke-config.json` (git-ignored).
+
+2. Run:
 
 ```bash
 make smoke
