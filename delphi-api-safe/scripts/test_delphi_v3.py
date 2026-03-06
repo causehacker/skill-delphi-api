@@ -159,11 +159,32 @@ def test_voice(api_key: str, cid: Optional[str], message: str) -> Dict[str, Any]
     if not cid:
         out["voice_stream"] = {"http": "-", "pass": False, "preview": "Skipped: no conversation_id"}
         return out
-    # Voice returns binary PCM, not JSON. Use raw curl to check HTTP status.
-    st, body = http_json("POST", "/voice/stream", api_key, {"conversation_id": cid, "message": message}, max_time=30)
-    # Success = 200 with non-empty body (binary PCM data)
-    ok = st == "200" and len(body) > 0
-    out["voice_stream"] = {"http": st, "pass": ok, "preview": f"{len(body)} bytes" if ok else body[:180]}
+    # Voice returns binary PCM, not JSON — write to temp file and check HTTP status + file size.
+    import tempfile, os
+    tmp = tempfile.mktemp(suffix=".pcm")
+    payload = shlex.quote(json.dumps({"conversation_id": cid, "message": message}))
+    cmd = (
+        f"curl -sS --max-time 30 -w 'HTTP_STATUS:%{{http_code}}' -X POST '{BASE}/voice/stream' "
+        f"-H 'x-api-key: {api_key}' -H 'Content-Type: application/json' "
+        f"-d {payload} --output {shlex.quote(tmp)}"
+    )
+    p = subprocess.run(cmd, shell=True, text=True, capture_output=True)
+    raw = (p.stdout or "") + (p.stderr or "")
+    st = "000"
+    if "HTTP_STATUS:" in raw:
+        st = raw.rsplit("HTTP_STATUS:", 1)[1].strip()
+    size = 0
+    try:
+        size = os.path.getsize(tmp)
+    except OSError:
+        pass
+    try:
+        os.unlink(tmp)
+    except OSError:
+        pass
+    ok = st == "200" and size > 0
+    preview = f"{size} bytes PCM audio" if ok else (f"http {st}" if st != "200" else "empty response")
+    out["voice_stream"] = {"http": st, "pass": ok, "preview": preview}
     return out
 
 
