@@ -314,6 +314,138 @@
     background: var(--get-bg) !important;
   }
 
+  /* ── Voice Chat Widget ── */
+  .voice-widget {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    margin-bottom: 24px; overflow: hidden;
+  }
+  .voice-widget-toggle {
+    width: 100%; padding: 12px 16px; background: none; border: none;
+    font-family: var(--font); font-size: 14px; font-weight: 600;
+    color: var(--accent); cursor: pointer; text-align: left;
+    display: flex; align-items: center; gap: 8px;
+    transition: background .15s;
+  }
+  .voice-widget-toggle:hover { background: var(--post-bg); }
+  .voice-widget-toggle .vw-chevron { font-size: 10px; transition: transform .2s; }
+  .voice-widget.open .vw-chevron { transform: rotate(90deg); }
+  .voice-widget-body { display: none; border-top: 1px solid var(--border); }
+  .voice-widget.open .voice-widget-body { display: flex; flex-direction: column; }
+  .vw-chat {
+    height: 350px; overflow-y: auto; padding: 12px; display: flex;
+    flex-direction: column; gap: 10px; background: var(--bg);
+  }
+  .vw-chat:empty::after {
+    content: "Send a message to start a voice conversation";
+    color: var(--text-secondary); font-size: 13px; margin: auto; text-align: center;
+  }
+  .vw-msg { display: flex; flex-direction: column; max-width: 72%; animation: fadeIn .2s ease; }
+  .vw-msg.user { align-self: flex-end; align-items: flex-end; }
+  .vw-msg.clone { align-self: flex-start; align-items: flex-start; }
+  .vw-bubble {
+    padding: 8px 12px; border-radius: 10px; font-size: 13px; line-height: 1.5; word-break: break-word;
+  }
+  .vw-msg.user .vw-bubble { background: #eff6ff; border: 1px solid #bfdbfe; border-bottom-right-radius: 3px; }
+  .vw-msg.clone .vw-bubble { background: #f3f4f6; border: 1px solid #d1d5db; border-bottom-left-radius: 3px; }
+  .vw-msg.clone .vw-bubble.vw-error { background: #fef2f2; border-color: #fecaca; color: var(--delete); }
+  .vw-meta { font-size: 10px; color: var(--text-secondary); margin-top: 3px; padding: 0 4px; }
+  .vw-audio-player { margin-top: 6px; display: flex; align-items: center; gap: 6px; }
+  .vw-audio-player button {
+    width: 28px; height: 28px; border-radius: 50%; border: none;
+    background: var(--accent); color: #fff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; font-size: 12px;
+    flex-shrink: 0; transition: background .15s;
+  }
+  .vw-audio-player button:hover { background: var(--accent-hover); }
+  .vw-progress-wrap {
+    flex: 1; height: 5px; background: #e5e7eb; border-radius: 3px;
+    overflow: hidden; cursor: pointer;
+  }
+  .vw-progress-bar { height: 100%; background: var(--accent); border-radius: 3px; width: 0%; transition: width .1s linear; }
+  .vw-dur { font-size: 10px; color: var(--text-secondary); font-family: var(--mono); min-width: 36px; text-align: right; }
+  .vw-loading span {
+    display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--text-secondary); margin: 0 2px;
+    animation: vwBounce .6s infinite alternate;
+  }
+  .vw-loading span:nth-child(2) { animation-delay: .2s; }
+  .vw-loading span:nth-child(3) { animation-delay: .4s; }
+  @keyframes vwBounce { to { opacity: .3; transform: translateY(-3px); } }
+  @keyframes vwPulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+  .vw-bottom {
+    display: flex; align-items: center; gap: 6px;
+    padding: 10px 12px; border-top: 1px solid var(--border); background: var(--surface);
+  }
+  .vw-bottom input {
+    flex: 1; padding: 8px 12px; border: 1px solid var(--border);
+    border-radius: 6px; font-size: 13px; outline: none; font-family: var(--font);
+  }
+  .vw-bottom input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79,110,247,.15); }
+  .vw-bottom .vw-btn {
+    height: 34px; border: none; border-radius: 6px; cursor: pointer;
+    font-size: 13px; font-weight: 600; display: flex; align-items: center;
+    justify-content: center; gap: 4px; transition: background .15s;
+  }
+  .vw-bottom .vw-btn-send { background: var(--accent); color: #fff; padding: 0 14px; }
+  .vw-bottom .vw-btn-send:hover { background: var(--accent-hover); }
+  .vw-bottom .vw-btn-send:disabled { opacity: .5; cursor: default; }
+  .vw-bottom .vw-btn-mic {
+    width: 34px; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  }
+  .vw-bottom .vw-btn-mic:hover { background: #e5e7eb; }
+  .vw-bottom .vw-btn-mic.recording { background: #fef2f2; border-color: #fecaca; color: var(--delete); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 3px rgba(220,38,38,.15); } }
+  .vw-bottom .vw-btn-new {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text-secondary);
+    padding: 0 8px; font-size: 11px;
+  }
+  .vw-bottom .vw-btn-new:hover { background: #e5e7eb; }
+  .vw-chat::-webkit-scrollbar { width: 5px; }
+  .vw-chat::-webkit-scrollbar-track { background: transparent; }
+  .vw-chat::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+  /* Voice widget debug panel */
+  .vw-debug-toggle {
+    background: none; border: 1px solid var(--border); border-radius: 4px;
+    font-family: var(--mono); font-size: 10px; color: var(--text-secondary);
+    cursor: pointer; padding: 2px 6px; transition: background .15s;
+  }
+  .vw-debug-toggle:hover { background: var(--bg); }
+  .vw-debug-toggle.active { background: #fef3c7; border-color: #fde68a; color: #92400e; }
+  .vw-debug-panel {
+    display: none; background: #1a1d23; color: #d4d4d8;
+    font-family: var(--mono); font-size: 11px; border-top: 1px solid #3f3f46;
+  }
+  .vw-debug-panel.visible { display: flex; flex-direction: column; }
+  .vw-debug-panel .vw-dbg-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px; background: #27272a; border-bottom: 1px solid #3f3f46;
+    font-weight: 600; font-size: 10px; color: #a1a1aa;
+  }
+  .vw-debug-panel .vw-dbg-header button {
+    background: none; border: none; color: #a1a1aa; cursor: pointer;
+    font-size: 10px; font-family: var(--mono); padding: 1px 5px; border-radius: 3px;
+  }
+  .vw-debug-panel .vw-dbg-header button:hover { background: #3f3f46; color: #fff; }
+  .vw-dbg-log {
+    max-height: 180px; overflow-y: auto; padding: 6px 10px; line-height: 1.6;
+  }
+  .vw-dbg-log::-webkit-scrollbar { width: 4px; }
+  .vw-dbg-log::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 2px; }
+  .vw-dbg-entry { padding: 1px 0; }
+  .vw-dbg-entry .ts { color: #71717a; }
+  .vw-dbg-entry .lb { font-weight: 600; }
+  .vw-dbg-entry .lb.chunk { color: #22d3ee; }
+  .vw-dbg-entry .lb.play { color: #a78bfa; }
+  .vw-dbg-entry .lb.info { color: #facc15; }
+  .vw-dbg-entry .lb.done { color: #4ade80; }
+  .vw-dbg-entry .lb.err { color: #f87171; }
+  .vw-dbg-stats {
+    padding: 5px 10px; background: #27272a; border-top: 1px solid #3f3f46;
+    display: flex; gap: 14px; font-size: 10px; color: #a1a1aa;
+  }
+  .vw-dbg-stats .v { color: #e4e4e7; font-weight: 600; }
+
   /* Responsive */
   @media (max-width: 860px) {
     .sidebar { display: none; }
@@ -330,7 +462,6 @@
   <div class="logo">Delphi<span>V3 API</span></div>
   <div class="fields">
     <input id="apiKey" type="password" placeholder="x-api-key" spellcheck="false">
-    <input id="slug" type="text" placeholder="clone-slug (optional)" spellcheck="false">
     <input id="userEmail" type="email" placeholder="user email (optional)" spellcheck="false">
   </div>
   <div id="resolvedUser" class="resolved-user" style="display:none">
@@ -396,23 +527,19 @@ function updateModeBanner() {
    - type: "string" (default), "boolean", "integer", "select"
    - options: array of strings for select type
    - req: true (default) or false
-   - global: "slug"|"userEmail" — auto-populates from top bar
+   - global: "userEmail" — auto-populates from top bar
 */
 const ENDPOINTS = [
   { section: "Conversations", endpoints: [
     { method: "POST", path: "/v3/conversation", summary: "Create conversation", desc: "Start a new conversation and get the initial greeting.",
       body: [
-        { name: "slug", type: "string", req: false, desc: "Clone slug (optional — omit to use account default)" },
         { name: "user_email", type: "string", req: false, desc: "Associate with a user" },
       ],
       extra: [
-        { id: "conv_slug", placeholder: "slug", label: "Slug", req: false, global: "slug" },
         { id: "conv_user_email", placeholder: "user_email", label: "User Email", req: false, global: "userEmail" },
       ],
       bodyFn: (g, ex) => {
         const b = {};
-        const s = (ex && ex.conv_slug) || g.slug;
-        if (s) b.slug = s;
         if (ex.conv_user_email) b.user_email = ex.conv_user_email;
         return b;
       }
@@ -422,19 +549,15 @@ const ENDPOINTS = [
       body: [
         { name: "conversation_id", type: "string", req: true, desc: "From /v3/conversation" },
         { name: "message", type: "string", req: true, desc: "User message text" },
-        { name: "slug", type: "string", req: false, desc: "Clone slug (optional — omit to use account default)" },
         { name: "file_urls", type: "string[]", req: false, desc: "Optional file attachments (comma-separated URLs)" },
       ],
       extra: [
         { id: "stream_cid", placeholder: "conversation_id", label: "Conversation ID" },
         { id: "stream_msg", placeholder: "Hello!", label: "Message" },
-        { id: "stream_slug", placeholder: "slug", label: "Slug", req: false, global: "slug" },
         { id: "stream_files", placeholder: "file_urls", label: "File URLs (comma-sep)", req: false },
       ],
       bodyFn: (g, ex) => {
         const b = { conversation_id: ex.stream_cid || "<conversation_id>", message: ex.stream_msg || "Hello!" };
-        const s = (ex && ex.stream_slug) || g.slug;
-        if (s) b.slug = s;
         if (ex.stream_files) b.file_urls = ex.stream_files.split(",").map(u => u.trim()).filter(Boolean);
         return b;
       }
@@ -636,7 +759,7 @@ const ENDPOINTS = [
 /* ── Helpers ── */
 function $(sel, ctx) { return (ctx || document).querySelector(sel); }
 function globals() {
-  return { apiKey: $id("apiKey").value.trim(), slug: $id("slug").value.trim(), userEmail: $id("userEmail").value.trim() };
+  return { apiKey: $id("apiKey").value.trim(), userEmail: $id("userEmail").value.trim() };
 }
 function $id(id) { return document.getElementById(id); }
 function toast(msg) {
@@ -883,6 +1006,36 @@ function renderAll() {
       sideHtml += `<a href="#ep-${idx}"><span class="method-dot" style="background:var(--${m})"></span>${ep.summary}</a>`;
       idx++;
     });
+    // Insert voice chat widget after Voice section
+    if (sec.section === "Voice") {
+      mainHtml += `
+      <div class="voice-widget" id="voiceWidget">
+        <button class="voice-widget-toggle" onclick="toggleVoiceWidget()">
+          <span class="vw-chevron">&#9654;</span> Try Voice Chat
+        </button>
+        <a href="VOICE-STREAMING.md" target="_blank" style="font-size:12px; color:var(--muted); margin:4px 0 0 24px; text-decoration:none; display:inline-block;">&#128214; How voice streaming works</a>
+        <div class="voice-widget-body">
+          <div class="vw-chat" id="vwChat"></div>
+          <div class="vw-bottom">
+            <button class="vw-btn vw-btn-new" onclick="vwNewConversation()" title="New conversation">+ New</button>
+            <input type="text" id="vwInput" placeholder="Type a message..." autocomplete="off">
+            <button class="vw-btn vw-btn-mic" id="vwBtnMic" title="Push to talk" onmousedown="vwMicStart()" onmouseup="vwMicStop()" ontouchstart="vwMicStart()" ontouchend="vwMicStop()">&#127908;</button>
+            <button class="vw-btn vw-btn-send" id="vwBtnSend" onclick="vwSend()">Send</button>
+            <button class="vw-debug-toggle" id="vwDbgToggle" onclick="vwToggleDebug()" title="Toggle debug">&lt;/&gt;</button>
+          </div>
+          <div class="vw-debug-panel" id="vwDbgPanel">
+            <div class="vw-dbg-header"><span>Stream Debug</span><button onclick="vwClearDbg()">Clear</button></div>
+            <div class="vw-dbg-log" id="vwDbgLog"></div>
+            <div class="vw-dbg-stats">
+              <span>Chunks: <span class="v" id="vwDbgChunks">0</span></span>
+              <span>Bytes: <span class="v" id="vwDbgBytes">0</span></span>
+              <span>Dur: <span class="v" id="vwDbgDur">0.0s</span></span>
+              <span>Latency: <span class="v" id="vwDbgLat">—</span></span>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }
   });
   $id("endpoints").innerHTML = mainHtml;
   $id("sidebar").innerHTML = sideHtml;
@@ -1089,8 +1242,6 @@ function validateEndpoint(idx) {
   // API key always required
   if (!g.apiKey) { errors.push("API key"); $id("apiKey").classList.add("field-invalid"); }
 
-  // Slug is optional — no validation needed
-
   // Email needed?
   const needsEmail = (ep.query || []).some(p => p.name === "email" && p.req)
                   || (ep.body || []).some(p => (p.name === "email" || p.name === "user_email") && p.req);
@@ -1212,11 +1363,430 @@ function formatPaste(idx) {
   toast("Formatted!");
 }
 
+/* ── Voice Chat Widget ── */
+(function() {
+  let vwConvId = null;
+  let vwSending = false;
+  let vwAudioCtx = null;
+  let vwCurrentSource = null;
+  let vwCurrentPlayIdx = null;
+  const vwBuffers = [];
+
+  window.toggleVoiceWidget = function() {
+    const w = $id("voiceWidget");
+    w.classList.toggle("open");
+  };
+
+  function vwGetAudioCtx() {
+    if (!vwAudioCtx) vwAudioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+    return vwAudioCtx;
+  }
+
+  function vwPcmToBuffer(pcm) {
+    const ctx = vwGetAudioCtx();
+    const int16 = new Int16Array(pcm);
+    const f32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768;
+    const buf = ctx.createBuffer(1, f32.length, 24000);
+    buf.copyToChannel(f32, 0);
+    return buf;
+  }
+
+  function vwFmtTime(s) { return Math.floor(s/60) + ":" + String(Math.floor(s%60)).padStart(2,"0"); }
+
+  function vwScrollBottom() {
+    const c = $id("vwChat");
+    if (c) requestAnimationFrame(() => { c.scrollTop = c.scrollHeight; });
+  }
+
+  function vwAddUserBubble(text) {
+    const d = document.createElement("div");
+    d.className = "vw-msg user";
+    d.innerHTML = `<div class="vw-bubble">${escHtml(text)}</div><div class="vw-meta">You</div>`;
+    $id("vwChat").appendChild(d);
+    vwScrollBottom();
+  }
+
+  function vwAddLoading() {
+    const d = document.createElement("div");
+    d.className = "vw-msg clone";
+    d.id = "vw-loading";
+    d.innerHTML = `<div class="vw-bubble"><div class="vw-loading"><span></span><span></span><span></span></div></div>`;
+    $id("vwChat").appendChild(d);
+    vwScrollBottom();
+  }
+
+  function vwShowStreamingPlayer(audioIdx) {
+    const ld = $id("vw-loading");
+    if (ld) ld.remove();
+    const d = document.createElement("div");
+    d.className = "vw-msg clone";
+    d.innerHTML = `
+      <div class="vw-bubble">
+        <div class="vw-audio-player" id="vw-player-${audioIdx}">
+          <button onclick="vwTogglePlay(${audioIdx})" id="vw-play-${audioIdx}" disabled>&#9654;</button>
+          <div class="vw-progress-wrap" onclick="vwSeek(event,${audioIdx})">
+            <div class="vw-progress-bar" id="vw-bar-${audioIdx}"></div>
+          </div>
+          <span class="vw-stream-dot" id="vw-sdot-${audioIdx}" style="width:6px;height:6px;border-radius:50%;background:var(--accent);animation:vwPulse 1s infinite;flex-shrink:0"></span>
+          <span class="vw-dur" id="vw-dur-${audioIdx}">0:00</span>
+        </div>
+      </div>
+      <div class="vw-meta" id="vw-meta-${audioIdx}">Streaming...</div>`;
+    $id("vwChat").appendChild(d);
+    vwScrollBottom();
+  }
+
+  function vwFinalizePlayer(audioIdx, duration) {
+    const dot = $id("vw-sdot-" + audioIdx); if (dot) dot.remove();
+    const dur = $id("vw-dur-" + audioIdx); if (dur) dur.textContent = vwFmtTime(duration);
+    const meta = $id("vw-meta-" + audioIdx); if (meta) meta.textContent = "Clone \u00b7 " + vwFmtTime(duration);
+    const btn = $id("vw-play-" + audioIdx); if (btn) btn.disabled = false;
+  }
+
+  function vwReplaceLoadingError(err) {
+    const ld = $id("vw-loading");
+    if (ld) ld.remove();
+    const d = document.createElement("div");
+    d.className = "vw-msg clone";
+    d.innerHTML = `<div class="vw-bubble vw-error">${escHtml(err)}</div><div class="vw-meta">Error</div>`;
+    $id("vwChat").appendChild(d);
+    vwScrollBottom();
+  }
+
+  function vwPcmToFloat32(bytes) {
+    const int16 = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
+    const f32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768;
+    return f32;
+  }
+
+  // AudioWorklet for streaming playback
+  const VW_WORKLET_CODE = `
+  class S extends AudioWorkletProcessor {
+    constructor() {
+      super();
+      this.q = []; this.c = null; this.p = 0; this.live = true;
+      this.port.onmessage = (e) => {
+        if (e.data === 'stop') { this.live = false; this.q = []; this.c = null; }
+        else this.q.push(e.data);
+      };
+    }
+    process(_, outputs) {
+      if (!this.live) return false;
+      const o = outputs[0][0];
+      let w = 0;
+      while (w < o.length) {
+        if (!this.c || this.p >= this.c.length) {
+          if (!this.q.length) { for (; w < o.length; w++) o[w] = 0; return true; }
+          this.c = this.q.shift(); this.p = 0;
+        }
+        const n = Math.min(this.c.length - this.p, o.length - w);
+        o.set(this.c.subarray(this.p, this.p + n), w);
+        w += n; this.p += n;
+      }
+      return true;
+    }
+  }
+  registerProcessor('vw-pcm-stream', S);
+  `;
+  let vwWorkletReady = false;
+  async function vwEnsureWorklet() {
+    if (vwWorkletReady) return;
+    const ctx = vwGetAudioCtx();
+    const url = URL.createObjectURL(new Blob([VW_WORKLET_CODE], { type: 'application/javascript' }));
+    await ctx.audioWorklet.addModule(url);
+    URL.revokeObjectURL(url);
+    vwWorkletReady = true;
+  }
+
+  function vwStopAudio() {
+    if (vwCurrentPlayIdx !== null) {
+      const entry = vwBuffers[vwCurrentPlayIdx];
+      if (entry && entry.worklet) {
+        try { entry.worklet.port.postMessage('stop'); entry.worklet.disconnect(); } catch {}
+        entry.worklet = null;
+      }
+    }
+    if (vwCurrentSource) { try { vwCurrentSource.stop(); } catch {} vwCurrentSource = null; }
+    if (vwCurrentPlayIdx !== null) {
+      const b = $id("vw-play-" + vwCurrentPlayIdx); if (b) b.innerHTML = "&#9654;";
+      const r = $id("vw-bar-" + vwCurrentPlayIdx); if (r) r.style.width = "0%";
+      vwCurrentPlayIdx = null;
+    }
+  }
+
+  window.vwTogglePlay = function(idx) {
+    if (vwCurrentPlayIdx === idx) { vwStopAudio(); return; }
+    vwStopAudio();
+    vwPlayAudio(idx, 0);
+  };
+
+  function vwPlayAudio(idx, offset) {
+    const entry = vwBuffers[idx];
+    if (!entry || !entry.buffer) return;
+    const ctx = vwGetAudioCtx();
+    if (ctx.state === "suspended") ctx.resume();
+    const src = ctx.createBufferSource();
+    src.buffer = entry.buffer;
+    src.connect(ctx.destination);
+    vwCurrentSource = src;
+    vwCurrentPlayIdx = idx;
+    const btn = $id("vw-play-" + idx);
+    const bar = $id("vw-bar-" + idx);
+    if (btn) btn.innerHTML = "&#9724;";
+    const t0 = ctx.currentTime;
+    const dur = entry.buffer.duration;
+    function tick() {
+      if (vwCurrentPlayIdx !== idx) return;
+      const e = ctx.currentTime - t0 + offset;
+      if (bar) bar.style.width = Math.min(100, e / dur * 100) + "%";
+      if (e < dur) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+    src.onended = () => {
+      if (vwCurrentPlayIdx === idx) {
+        if (btn) btn.innerHTML = "&#9654;";
+        if (bar) bar.style.width = "0%";
+        vwCurrentSource = null;
+        vwCurrentPlayIdx = null;
+      }
+    };
+    src.start(0, offset);
+  }
+
+  window.vwSeek = function(ev, idx) {
+    const entry = vwBuffers[idx];
+    if (!entry || !entry.buffer) return;
+    const r = ev.currentTarget.getBoundingClientRect();
+    const offset = ((ev.clientX - r.left) / r.width) * entry.buffer.duration;
+    vwStopAudio();
+    vwPlayAudio(idx, offset);
+  };
+
+  // ── Debug Panel ──
+  let vwDbgT0 = 0, vwDbgChunks = 0, vwDbgBytes = 0;
+
+  window.vwToggleDebug = function() {
+    const p = $id("vwDbgPanel"), b = $id("vwDbgToggle");
+    if (!p) return;
+    const show = !p.classList.contains("visible");
+    p.classList.toggle("visible", show);
+    if (b) b.classList.toggle("active", show);
+  };
+
+  window.vwClearDbg = function() {
+    const log = $id("vwDbgLog"); if (log) log.innerHTML = "";
+    vwDbgChunks = 0; vwDbgBytes = 0;
+    const el = (id, v) => { const e = $id(id); if (e) e.textContent = v; };
+    el("vwDbgChunks", "0"); el("vwDbgBytes", "0"); el("vwDbgDur", "0.0s"); el("vwDbgLat", "\u2014");
+  };
+
+  function vwDbg(label, cls, msg) {
+    const log = $id("vwDbgLog"); if (!log) return;
+    const el = document.createElement("div");
+    el.className = "vw-dbg-entry";
+    const t = vwDbgT0 ? ((performance.now() - vwDbgT0) / 1000).toFixed(3) : "0.000";
+    el.innerHTML = `<span class="ts">${t}s</span> <span class="lb ${cls}">[${label}]</span> ${msg}`;
+    log.appendChild(el);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function vwDbgStats() {
+    const el = (id, v) => { const e = $id(id); if (e) e.textContent = v; };
+    el("vwDbgChunks", vwDbgChunks);
+    el("vwDbgBytes", vwDbgBytes >= 1024 ? (vwDbgBytes / 1024).toFixed(1) + " KB" : vwDbgBytes);
+    el("vwDbgDur", (vwDbgBytes / 48000).toFixed(2) + "s");
+  }
+
+  async function vwStreamAndPlay(response, audioIdx) {
+    const ctx = vwGetAudioCtx();
+    if (ctx.state === "suspended") await ctx.resume();
+    await vwEnsureWorklet();
+
+    const worklet = new AudioWorkletNode(ctx, 'vw-pcm-stream');
+    worklet.connect(ctx.destination);
+
+    vwDbgT0 = performance.now();
+    vwDbgChunks = 0; vwDbgBytes = 0;
+    vwClearDbg();
+    vwDbg("INFO", "info", "AudioContext sampleRate: " + ctx.sampleRate);
+    vwDbg("INFO", "info", "Reading stream body...");
+    vwDbg("INFO", "info", "Content-Type: " + (response.headers.get("content-type") || "?"));
+    vwDbg("INFO", "info", "Transfer-Encoding: " + (response.headers.get("transfer-encoding") || "none"));
+    vwDbg("INFO", "info", "Content-Length: " + (response.headers.get("content-length") || "none (chunked)"));
+
+    const reader = response.body.getReader();
+    const allChunks = [];
+    let leftover = new Uint8Array(0);
+    let totalSamples = 0;
+    vwCurrentPlayIdx = audioIdx;
+    vwBuffers[audioIdx] = { buffer: null, streaming: true, worklet };
+    vwShowStreamingPlayer(audioIdx);
+
+    const streamStart = ctx.currentTime;
+    function tick() {
+      if (vwCurrentPlayIdx !== audioIdx) return;
+      const d = $id("vw-dur-" + audioIdx);
+      if (d) d.textContent = vwFmtTime(ctx.currentTime - streamStart);
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) { vwDbg("DONE", "done", `Stream ended \u2014 ${vwDbgChunks} chunks, ${vwDbgBytes} bytes`); break; }
+      vwDbgChunks++;
+      vwDbgBytes += value.length;
+      if (vwDbgChunks === 1) {
+        const lat = (performance.now() - vwDbgT0).toFixed(0);
+        const e = $id("vwDbgLat"); if (e) e.textContent = lat + "ms";
+      }
+      vwDbg("CHUNK", "chunk", `#${vwDbgChunks} \u2014 ${value.length} bytes (total: ${vwDbgBytes})`);
+      vwDbgStats();
+      let combined;
+      if (leftover.length > 0) {
+        combined = new Uint8Array(leftover.length + value.length);
+        combined.set(leftover);
+        combined.set(value, leftover.length);
+      } else {
+        combined = value;
+      }
+      const usable = combined.length - (combined.length % 2);
+      leftover = combined.length % 2 ? combined.slice(usable) : new Uint8Array(0);
+      if (usable === 0) continue;
+
+      const chunk = combined.slice(0, usable);
+      allChunks.push(chunk);
+      const f32 = vwPcmToFloat32(chunk);
+      totalSamples += f32.length;
+      worklet.port.postMessage(f32);
+      vwDbg("PLAY", "play", `Pushed ${f32.length} samples (${(f32.length/24000*1000).toFixed(0)}ms) to worklet`);
+    }
+
+    // Build full buffer for replay/seek
+    const totalLen = allChunks.reduce((s, c) => s + c.length, 0);
+    const merged = new Uint8Array(totalLen);
+    let off = 0;
+    for (const c of allChunks) { merged.set(c, off); off += c.length; }
+    const fullBuffer = vwPcmToBuffer(merged.buffer);
+    vwBuffers[audioIdx] = { buffer: fullBuffer, streaming: false, worklet };
+    vwDbg("DONE", "done", `Buffer: ${fullBuffer.duration.toFixed(2)}s (${totalLen} bytes, ${vwDbgChunks} chunks)`);
+    vwDbgStats();
+    vwFinalizePlayer(audioIdx, fullBuffer.duration);
+
+    // Let worklet finish draining, then clean up
+    const elapsed = ctx.currentTime - streamStart;
+    const remaining = Math.max(0, fullBuffer.duration - elapsed);
+    setTimeout(() => {
+      try { worklet.port.postMessage('stop'); worklet.disconnect(); } catch {}
+      if (vwBuffers[audioIdx]) vwBuffers[audioIdx].worklet = null;
+      if (vwCurrentPlayIdx === audioIdx) vwCurrentPlayIdx = null;
+    }, remaining * 1000 + 500);
+  }
+
+  window.vwNewConversation = function() {
+    vwConvId = null;
+    $id("vwChat").innerHTML = "";
+    vwBuffers.length = 0;
+    vwStopAudio();
+  };
+
+  window.vwSend = async function() {
+    const input = $id("vwInput");
+    const text = input.value.trim();
+    if (!text || vwSending) return;
+    const g = globals();
+    if (!g.apiKey) { $id("apiKey").focus(); $id("apiKey").classList.add("field-invalid"); return; }
+    if (!proxyAvailable) { toast("Start proxy first: python3 docs/serve.py"); return; }
+
+    vwSending = true;
+    $id("vwBtnSend").disabled = true;
+    input.value = "";
+    vwAddUserBubble(text);
+    vwAddLoading();
+
+    try {
+      if (!vwConvId) {
+        const convBody = {};
+        const cr = await fetch("/api/v3/conversation", {
+          method: "POST",
+          headers: { "x-api-key": g.apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify(convBody),
+        });
+        if (!cr.ok) throw new Error("Conversation create failed: HTTP " + cr.status);
+        const cd = await cr.json();
+        vwConvId = cd.conversation_id;
+      }
+      vwDbgT0 = performance.now();
+      vwDbg("INFO", "info", "POST /api/v3/voice/stream \u2014 sending...");
+      const vr = await fetch("/api/v3/voice/stream", {
+        method: "POST",
+        headers: { "x-api-key": g.apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: vwConvId, message: text }),
+      });
+      vwDbg("INFO", "info", `Response: HTTP ${vr.status} in ${(performance.now() - vwDbgT0).toFixed(0)}ms`);
+      if (!vr.ok) {
+        let et = "HTTP " + vr.status;
+        try { const ej = await vr.json(); et += ": " + (ej.error || ej.message || JSON.stringify(ej)); } catch {}
+        vwDbg("ERR", "err", et);
+        vwReplaceLoadingError(et);
+        return;
+      }
+      const audioIdx = vwBuffers.length;
+      await vwStreamAndPlay(vr, audioIdx);
+    } catch (e) {
+      vwReplaceLoadingError(e.message);
+    } finally {
+      vwSending = false;
+      $id("vwBtnSend").disabled = false;
+      input.focus();
+    }
+  };
+
+  // Enter key
+  document.addEventListener("keydown", (e) => {
+    if (e.target.id === "vwInput" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); vwSend(); }
+  });
+
+  // Push-to-talk mic
+  let vwRecognition = null;
+  let vwRecording = false;
+
+  window.vwMicStart = function() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { $id("vwInput").placeholder = "Mic not supported \u2014 type your message instead"; $id("vwBtnMic").style.opacity = ".4"; return; }
+    if (vwRecording) return;
+    vwRecording = true;
+    $id("vwBtnMic").classList.add("recording");
+    vwRecognition = new SR();
+    vwRecognition.continuous = false;
+    vwRecognition.interimResults = true;
+    vwRecognition.lang = "en-US";
+    vwRecognition.onresult = (e) => {
+      let t = "";
+      for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+      $id("vwInput").value = t;
+    };
+    vwRecognition.onerror = () => { vwRecording = false; $id("vwBtnMic").classList.remove("recording"); };
+    vwRecognition.onend = () => {
+      vwRecording = false;
+      $id("vwBtnMic").classList.remove("recording");
+      if ($id("vwInput").value.trim()) vwSend();
+    };
+    vwRecognition.start();
+  };
+
+  window.vwMicStop = function() {
+    if (vwRecognition && vwRecording) vwRecognition.stop();
+  };
+})();
+
 /* ── Init ── */
 renderAll();
 
 // Persist inputs to localStorage
-["apiKey", "slug", "userEmail"].forEach(id => {
+["apiKey", "userEmail"].forEach(id => {
   const el = $id(id);
   const saved = localStorage.getItem("delphi_" + id);
   if (saved) el.value = saved;
@@ -1240,7 +1810,7 @@ document.addEventListener("input", handleExtraChange);
 document.addEventListener("change", handleExtraChange);
 
 // Refresh curls on global input changes & clear validation
-["apiKey", "slug", "userEmail"].forEach(id => {
+["apiKey", "userEmail"].forEach(id => {
   $id(id).addEventListener("input", () => {
     $id(id).classList.remove("field-invalid");
     document.querySelectorAll(".endpoint.open").forEach(el => {

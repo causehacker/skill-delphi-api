@@ -71,6 +71,56 @@ class ProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"error": str(e)}).encode())
 
+    def _proxy_binary(self):
+        """Binary streaming proxy: forward PCM audio chunks as they arrive."""
+        target, body, headers = self._build_request()
+        req = urllib.request.Request(target, data=body, headers=headers, method="POST")
+        try:
+            resp = urllib.request.urlopen(req, timeout=60)
+            self.send_response(resp.status)
+            ct = resp.headers.get("Content-Type", "application/octet-stream")
+            self.send_header("Content-Type", ct)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            # Forward X-Audio-* headers
+            expose = []
+            for hdr in resp.headers:
+                if hdr.lower().startswith("x-audio-"):
+                    self.send_header(hdr, resp.headers[hdr])
+                    expose.append(hdr)
+            if expose:
+                self.send_header("Access-Control-Expose-Headers", ", ".join(expose))
+            self.end_headers()
+            # Stream raw binary — no Content-Length means connection close signals end
+            # (HTTP/1.0 default). Do NOT use manual chunked encoding — Python's
+            # http.server defaults to HTTP/1.0 which doesn't decode it in browsers.
+            try:
+                n = 0
+                while True:
+                    chunk = resp.read(8192)
+                    if not chunk:
+                        break
+                    n += 1
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+                print(f"    \033[35mvoice\033[0m streamed {n} chunks")
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            finally:
+                resp.close()
+        except urllib.error.HTTPError as e:
+            resp_body = e.read()
+            self.send_response(e.code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(resp_body)
+        except Exception as e:
+            self.send_response(502)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+
     def _proxy_stream(self):
         """SSE streaming proxy: forward chunks as they arrive."""
         target, body, headers = self._build_request()
@@ -115,7 +165,9 @@ class ProxyHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         if self._is_proxy():
-            if self.path.startswith("/api/v3/stream"):
+            if self.path.startswith("/api/v3/voice/stream"):
+                self._proxy_binary()
+            elif self.path.startswith("/api/v3/stream"):
                 self._proxy_stream()
             else:
                 self._proxy("POST")
@@ -153,9 +205,19 @@ class ProxyHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
 
     def log_message(self, fmt, *args):
-        method = args[0].split()[0] if args else ""
-        path = args[0].split()[1] if args and len(args[0].split()) > 1 else ""
-        status = args[1] if len(args) > 1 else ""
+        """Custom logging — suppress noise, show proxy/static requests cleanly."""
+        try:
+            # Standard request logs: fmt='"%s" %s %s', args=("GET /path HTTP/1.1", "200", "-")
+            # Error logs (via log_error): fmt="code %d, message %s", args=(status, msg)
+            first = str(args[0]) if args else ""
+            # Only request-line strings contain a space-separated method+path
+            parts = first.split()
+            if len(parts) < 2 or parts[0] not in ("GET","POST","PUT","PATCH","DELETE","OPTIONS","HEAD"):
+                return  # Not a request log (error/warning) — suppress
+            method, path = parts[0], parts[1]
+            status = str(args[1]) if len(args) > 1 else ""
+        except Exception:
+            return
         if path.startswith("/api/"):
             print(f"  \033[36mproxy\033[0m {method} {path} → {status}")
         elif not path.startswith(("/favicon", "/.")) :
@@ -170,6 +232,7 @@ def main():
     server = http.server.HTTPServer(("127.0.0.1", args.port), ProxyHandler)
     print(f"\n  \033[1mDelphi V3 API Reference\033[0m")
     print(f"  \033[32m→\033[0m http://localhost:{args.port}/api-reference.html")
+    print(f"  \033[32m→\033[0m http://localhost:{args.port}/voice-tester.html")
     print(f"  \033[90mProxy: /api/* → {DELPHI_BASE}/*\033[0m")
     print(f"  \033[90mPress Ctrl+C to stop\033[0m\n")
 

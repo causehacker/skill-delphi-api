@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delphi Voice Tester</title>
+<style>
+  :root {
+    --bg: #f8f9fb;
+    --surface: #fff;
+    --border: #e2e6ed;
+    --text: #1a1d23;
+    --text-secondary: #5f6775;
+    --accent: #4f6ef7;
+    --accent-hover: #3b5ae0;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+    --radius: 8px;
+    --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+    --shadow-lg: 0 4px 12px rgba(0,0,0,.08);
+    --topbar-h: 56px;
+    --bottombar-h: 64px;
+    --user-bg: #eff6ff;
+    --user-border: #bfdbfe;
+    --clone-bg: #f3f4f6;
+    --clone-border: #d1d5db;
+    --success: #16a34a;
+    --error: #dc2626;
+    --warning: #d97706;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.5; font-size: 14px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── Top Bar ── */
+  .topbar {
+    height: var(--topbar-h); background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 16px; box-shadow: var(--shadow); flex-shrink: 0;
+  }
+  .topbar .logo { font-weight: 700; font-size: 15px; color: var(--accent); white-space: nowrap; }
+  .topbar .logo span { color: var(--text-secondary); font-weight: 400; font-size: 12px; margin-left: 4px; }
+  .topbar .fields { display: flex; gap: 8px; flex: 1; flex-wrap: wrap; }
+  .topbar input, .topbar select {
+    padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 12px; font-family: var(--mono); background: var(--bg);
+    outline: none; min-width: 0;
+  }
+  .topbar input:focus, .topbar select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79,110,247,.15); }
+  .topbar input.key { width: 200px; }
+  .topbar select { width: 160px; cursor: pointer; }
+  .topbar .status-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .topbar .status-dot.ok { background: var(--success); }
+  .topbar .status-dot.err { background: var(--error); }
+  .topbar .status-dot.pending { background: var(--warning); }
+
+  /* ── Proxy Banner ── */
+  .proxy-banner {
+    background: #fef3c7; border-bottom: 1px solid #fde68a;
+    padding: 8px 16px; font-size: 12px; color: #92400e;
+    display: none; flex-shrink: 0; text-align: center;
+  }
+  .proxy-banner.visible { display: block; }
+  .proxy-banner code { background: #fde68a; padding: 2px 6px; border-radius: 4px; font-family: var(--mono); font-size: 11px; }
+
+  /* ── Chat Area ── */
+  .chat-area {
+    flex: 1; overflow-y: auto; padding: 16px 16px 8px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .chat-area:empty::after {
+    content: "Send a message to start a voice conversation";
+    color: var(--text-secondary); font-size: 14px;
+    margin: auto; text-align: center;
+  }
+
+  /* ── Message Bubbles ── */
+  .msg { display: flex; flex-direction: column; max-width: 75%; animation: fadeIn .2s ease; }
+  .msg.user { align-self: flex-end; align-items: flex-end; }
+  .msg.clone { align-self: flex-start; align-items: flex-start; }
+  .msg .bubble {
+    padding: 10px 14px; border-radius: 12px; font-size: 14px;
+    line-height: 1.5; word-break: break-word;
+  }
+  .msg.user .bubble { background: var(--user-bg); border: 1px solid var(--user-border); border-bottom-right-radius: 4px; }
+  .msg.clone .bubble { background: var(--clone-bg); border: 1px solid var(--clone-border); border-bottom-left-radius: 4px; }
+  .msg .meta { font-size: 11px; color: var(--text-secondary); margin-top: 4px; padding: 0 4px; }
+  .msg.clone .bubble.error { background: #fef2f2; border-color: #fecaca; color: var(--error); }
+
+  /* ── Audio Player in Clone Bubble ── */
+  .audio-player { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
+  .audio-player button {
+    width: 32px; height: 32px; border-radius: 50%; border: none;
+    background: var(--accent); color: #fff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0; transition: background .15s;
+  }
+  .audio-player button:hover { background: var(--accent-hover); }
+  .audio-player button:disabled { opacity: .4; cursor: default; }
+  .audio-player .progress-wrap {
+    flex: 1; height: 6px; background: #e5e7eb; border-radius: 3px;
+    overflow: hidden; cursor: pointer; position: relative;
+  }
+  .audio-player .progress-bar {
+    height: 100%; background: var(--accent); border-radius: 3px;
+    width: 0%; transition: width .1s linear;
+  }
+  .audio-player .duration { font-size: 11px; color: var(--text-secondary); font-family: var(--mono); min-width: 42px; text-align: right; }
+
+  /* ── Streaming indicator ── */
+  .audio-player .streaming-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    animation: streamPulse 1s infinite; flex-shrink: 0;
+  }
+  @keyframes streamPulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+
+  /* ── Loading Dots ── */
+  .loading-dots span {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--text-secondary); margin: 0 2px;
+    animation: bounce .6s infinite alternate;
+  }
+  .loading-dots span:nth-child(2) { animation-delay: .2s; }
+  .loading-dots span:nth-child(3) { animation-delay: .4s; }
+  @keyframes bounce { to { opacity: .3; transform: translateY(-4px); } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── Bottom Bar ── */
+  .bottombar {
+    height: var(--bottombar-h); background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 16px; flex-shrink: 0;
+  }
+  .bottombar input {
+    flex: 1; padding: 10px 14px; border: 1px solid var(--border);
+    border-radius: 8px; font-size: 14px; outline: none; font-family: var(--font);
+  }
+  .bottombar input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79,110,247,.15); }
+  .bottombar .btn {
+    height: 40px; border: none; border-radius: 8px; cursor: pointer;
+    font-size: 14px; font-weight: 600; display: flex; align-items: center;
+    justify-content: center; gap: 6px; transition: background .15s;
+  }
+  .bottombar .btn-send {
+    background: var(--accent); color: #fff; padding: 0 20px;
+  }
+  .bottombar .btn-send:hover { background: var(--accent-hover); }
+  .bottombar .btn-send:disabled { opacity: .5; cursor: default; }
+  .bottombar .btn-mic {
+    width: 40px; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  }
+  .bottombar .btn-mic:hover { background: #e5e7eb; }
+  .bottombar .btn-mic.recording { background: #fef2f2; border-color: #fecaca; color: var(--error); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(220,38,38,.15); } }
+  .bottombar .btn-new {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text-secondary);
+    padding: 0 12px; font-size: 12px;
+  }
+  .bottombar .btn-new:hover { background: #e5e7eb; }
+
+  /* ── Debug Panel ── */
+  .debug-toggle {
+    position: fixed; bottom: 72px; right: 16px; z-index: 100;
+    width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text-secondary); cursor: pointer;
+    font-size: 14px; display: flex; align-items: center; justify-content: center;
+    box-shadow: var(--shadow); transition: background .15s;
+  }
+  .debug-toggle:hover { background: var(--bg); }
+  .debug-toggle.active { background: #fef3c7; border-color: #fde68a; color: #92400e; }
+  .debug-panel {
+    position: fixed; bottom: 72px; right: 16px; z-index: 99;
+    width: 420px; max-height: 320px; background: #1a1d23; color: #d4d4d8;
+    border-radius: 10px; box-shadow: var(--shadow-lg); display: none;
+    flex-direction: column; font-family: var(--mono); font-size: 11px;
+    overflow: hidden;
+  }
+  .debug-panel.visible { display: flex; }
+  .debug-panel .debug-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; background: #27272a; border-bottom: 1px solid #3f3f46;
+    font-weight: 600; font-size: 11px; color: #a1a1aa; flex-shrink: 0;
+  }
+  .debug-panel .debug-header button {
+    background: none; border: none; color: #a1a1aa; cursor: pointer;
+    font-size: 11px; font-family: var(--mono); padding: 2px 6px; border-radius: 4px;
+  }
+  .debug-panel .debug-header button:hover { background: #3f3f46; color: #fff; }
+  .debug-panel .debug-log {
+    flex: 1; overflow-y: auto; padding: 8px 12px; line-height: 1.6;
+  }
+  .debug-panel .debug-log::-webkit-scrollbar { width: 4px; }
+  .debug-panel .debug-log::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 2px; }
+  .debug-entry { padding: 1px 0; }
+  .debug-entry .ts { color: #71717a; }
+  .debug-entry .label { font-weight: 600; }
+  .debug-entry .label.chunk { color: #22d3ee; }
+  .debug-entry .label.play { color: #a78bfa; }
+  .debug-entry .label.info { color: #facc15; }
+  .debug-entry .label.done { color: #4ade80; }
+  .debug-entry .label.err { color: #f87171; }
+  .debug-stats {
+    padding: 6px 12px; background: #27272a; border-top: 1px solid #3f3f46;
+    display: flex; gap: 16px; font-size: 10px; color: #a1a1aa; flex-shrink: 0;
+  }
+  .debug-stats span { white-space: nowrap; }
+  .debug-stats .val { color: #e4e4e7; font-weight: 600; }
+
+  /* ── Scrollbar ── */
+  .chat-area::-webkit-scrollbar { width: 6px; }
+  .chat-area::-webkit-scrollbar-track { background: transparent; }
+  .chat-area::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="topbar">
+  <div class="logo">Delphi<span>Voice Tester</span></div>
+  <div class="fields">
+    <input class="key" id="apiKey" type="password" placeholder="API Key" autocomplete="off">
+    <select id="micDevice"><option value="">Mic: default</option></select>
+    <select id="speakerDevice"><option value="">Speaker: default</option></select>
+  </div>
+  <div class="status-dot pending" id="proxyDot" title="Checking proxy..."></div>
+</div>
+
+<!-- Proxy Banner -->
+<div class="proxy-banner" id="proxyBanner">
+  Proxy not detected. Start it with <code>python3 docs/serve.py</code> then reload.
+</div>
+
+<!-- Chat Area -->
+<div class="chat-area" id="chatArea"></div>
+
+<!-- Debug Panel -->
+<button class="debug-toggle" id="debugToggle" onclick="toggleDebug()" title="Toggle debug panel">&lt;/&gt;</button>
+<div class="debug-panel" id="debugPanel">
+  <div class="debug-header">
+    <span>Stream Debug</span>
+    <button onclick="clearDebugLog()">Clear</button>
+  </div>
+  <div class="debug-log" id="debugLog"></div>
+  <div class="debug-stats" id="debugStats">
+    <span>Chunks: <span class="val" id="dbgChunks">0</span></span>
+    <span>Bytes: <span class="val" id="dbgBytes">0</span></span>
+    <span>Duration: <span class="val" id="dbgDur">0.0s</span></span>
+    <span>Latency: <span class="val" id="dbgLatency">—</span></span>
+  </div>
+</div>
+
+<!-- Bottom Bar -->
+<div class="bottombar">
+  <button class="btn btn-new" id="btnNew" title="New conversation" onclick="newConversation()">+ New</button>
+  <input type="text" id="msgInput" placeholder="Type a message..." autocomplete="off">
+  <button class="btn btn-mic" id="btnMic" title="Push to talk" onmousedown="micStart()" onmouseup="micStop()" ontouchstart="micStart()" ontouchend="micStop()">&#127908;</button>
+  <button class="btn btn-send" id="btnSend" onclick="sendMessage()">Send</button>
+</div>
+
+<script>
+// ── State ──
+let conversationId = null;
+let isSending = false;
+let audioCtx = null;
+let currentSource = null;
+let currentPlayIdx = null;
+const audioBuffers = []; // { buffer, duration }
+
+// ── Elements ──
+const apiKeyEl = document.getElementById("apiKey");
+const micDeviceEl = document.getElementById("micDevice");
+const speakerDeviceEl = document.getElementById("speakerDevice");
+const chatArea = document.getElementById("chatArea");
+const msgInput = document.getElementById("msgInput");
+const btnSend = document.getElementById("btnSend");
+const btnMic = document.getElementById("btnMic");
+const proxyDot = document.getElementById("proxyDot");
+const proxyBanner = document.getElementById("proxyBanner");
+
+// ── LocalStorage Persistence ──
+function loadSettings() {
+  apiKeyEl.value = localStorage.getItem("delphi_apiKey") || "";
+}
+function saveSettings() {
+  localStorage.setItem("delphi_apiKey", apiKeyEl.value);
+}
+apiKeyEl.addEventListener("input", saveSettings);
+loadSettings();
+
+// ── Proxy Detection ──
+async function checkProxy() {
+  try {
+    const r = await fetch("/api/v3/clone", {
+      headers: { "x-api-key": apiKeyEl.value || "test" }
+    });
+    proxyDot.className = "status-dot ok";
+    proxyDot.title = "Proxy connected";
+    proxyBanner.classList.remove("visible");
+    return true;
+  } catch {
+    proxyDot.className = "status-dot err";
+    proxyDot.title = "Proxy not available";
+    proxyBanner.classList.add("visible");
+    return false;
+  }
+}
+checkProxy();
+
+// ── Device Enumeration ──
+async function enumerateDevices() {
+  try {
+    // Request mic permission to get device labels
+    await navigator.mediaDevices.getUserMedia({ audio: true }).then(s => s.getTracks().forEach(t => t.stop()));
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    // Mic devices
+    micDeviceEl.innerHTML = '<option value="">Mic: default</option>';
+    devices.filter(d => d.kind === "audioinput").forEach(d => {
+      const opt = document.createElement("option");
+      opt.value = d.deviceId;
+      opt.textContent = d.label || ("Mic " + d.deviceId.slice(0, 6));
+      micDeviceEl.appendChild(opt);
+    });
+    // Speaker devices
+    speakerDeviceEl.innerHTML = '<option value="">Speaker: default</option>';
+    devices.filter(d => d.kind === "audiooutput").forEach(d => {
+      const opt = document.createElement("option");
+      opt.value = d.deviceId;
+      opt.textContent = d.label || ("Speaker " + d.deviceId.slice(0, 6));
+      speakerDeviceEl.appendChild(opt);
+    });
+  } catch (e) {
+    console.warn("Could not enumerate devices:", e);
+  }
+}
+enumerateDevices();
+
+// ── Conversation Management ──
+async function createConversation() {
+  const body = {};
+  const r = await fetch("/api/v3/conversation", {
+    method: "POST",
+    headers: { "x-api-key": apiKeyEl.value, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error("Failed to create conversation: HTTP " + r.status);
+  const data = await r.json();
+  conversationId = data.conversation_id;
+  return data;
+}
+
+function newConversation() {
+  conversationId = null;
+  chatArea.innerHTML = "";
+  audioBuffers.length = 0;
+  stopCurrentAudio();
+}
+
+// ── Chat UI ──
+function addUserBubble(text) {
+  const msg = document.createElement("div");
+  msg.className = "msg user";
+  msg.innerHTML = `<div class="bubble">${escHtml(text)}</div><div class="meta">You</div>`;
+  chatArea.appendChild(msg);
+  scrollToBottom();
+}
+
+function addCloneLoading() {
+  const msg = document.createElement("div");
+  msg.className = "msg clone";
+  msg.id = "loading-msg";
+  msg.innerHTML = `<div class="bubble"><div class="loading-dots"><span></span><span></span><span></span></div></div>`;
+  chatArea.appendChild(msg);
+  scrollToBottom();
+  return msg;
+}
+
+function showCloneStreamingPlayer(audioIdx) {
+  const loadMsg = document.getElementById("loading-msg");
+  if (loadMsg) loadMsg.remove();
+  const msg = document.createElement("div");
+  msg.className = "msg clone";
+  msg.id = "stream-msg-" + audioIdx;
+  msg.innerHTML = `
+    <div class="bubble">
+      <div class="audio-player" id="player-${audioIdx}">
+        <button onclick="togglePlay(${audioIdx})" id="play-btn-${audioIdx}" title="Playing" disabled>&#9654;</button>
+        <div class="progress-wrap" onclick="seekAudio(event, ${audioIdx})">
+          <div class="progress-bar" id="progress-${audioIdx}"></div>
+        </div>
+        <span class="streaming-dot" id="stream-dot-${audioIdx}"></span>
+        <span class="duration" id="dur-${audioIdx}">0:00</span>
+      </div>
+    </div>
+    <div class="meta" id="meta-${audioIdx}">Streaming...</div>
+  `;
+  chatArea.appendChild(msg);
+  scrollToBottom();
+}
+
+function finalizeClonePlayer(audioIdx, duration) {
+  const dot = document.getElementById("stream-dot-" + audioIdx);
+  if (dot) dot.remove();
+  const dur = document.getElementById("dur-" + audioIdx);
+  if (dur) dur.textContent = formatTime(duration);
+  const meta = document.getElementById("meta-" + audioIdx);
+  if (meta) meta.textContent = "Clone \u00b7 " + formatTime(duration);
+  const btn = document.getElementById("play-btn-" + audioIdx);
+  if (btn) btn.disabled = false;
+}
+
+function replaceCloneLoadingError(errText) {
+  const loadMsg = document.getElementById("loading-msg");
+  if (loadMsg) loadMsg.remove();
+  const msg = document.createElement("div");
+  msg.className = "msg clone";
+  msg.innerHTML = `<div class="bubble error">${escHtml(errText)}</div><div class="meta">Error</div>`;
+  chatArea.appendChild(msg);
+  scrollToBottom();
+}
+
+function scrollToBottom() {
+  requestAnimationFrame(() => { chatArea.scrollTop = chatArea.scrollHeight; });
+}
+
+function escHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return m + ":" + String(s).padStart(2, "0");
+}
+
+// ── Audio Playback (Web Audio API) ──
+function getAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+  }
+  return audioCtx;
+}
+
+function pcmToFloat32(pcmBytes) {
+  const int16 = new Int16Array(pcmBytes.buffer, pcmBytes.byteOffset, pcmBytes.byteLength / 2);
+  const f32 = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768;
+  return f32;
+}
+
+function pcmToAudioBuffer(pcmData) {
+  const ctx = getAudioCtx();
+  const int16 = new Int16Array(pcmData);
+  const float32 = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768;
+  const buffer = ctx.createBuffer(1, float32.length, 24000);
+  buffer.copyToChannel(float32, 0);
+  return buffer;
+}
+
+// ── AudioWorklet for streaming playback ──
+const WORKLET_CODE = `
+class S extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.q = []; this.c = null; this.p = 0; this.live = true;
+    this.port.onmessage = (e) => {
+      if (e.data === 'stop') { this.live = false; this.q = []; this.c = null; }
+      else this.q.push(e.data);
+    };
+  }
+  process(_, outputs) {
+    if (!this.live) return false;
+    const o = outputs[0][0];
+    let w = 0;
+    while (w < o.length) {
+      if (!this.c || this.p >= this.c.length) {
+        if (!this.q.length) { for (; w < o.length; w++) o[w] = 0; return true; }
+        this.c = this.q.shift(); this.p = 0;
+      }
+      const n = Math.min(this.c.length - this.p, o.length - w);
+      o.set(this.c.subarray(this.p, this.p + n), w);
+      w += n; this.p += n;
+    }
+    return true;
+  }
+}
+registerProcessor('pcm-stream', S);
+`;
+let workletReady = false;
+async function ensureWorklet() {
+  if (workletReady) return;
+  const ctx = getAudioCtx();
+  const url = URL.createObjectURL(new Blob([WORKLET_CODE], { type: 'application/javascript' }));
+  await ctx.audioWorklet.addModule(url);
+  URL.revokeObjectURL(url);
+  workletReady = true;
+}
+
+function stopCurrentAudio() {
+  if (currentPlayIdx !== null) {
+    const entry = audioBuffers[currentPlayIdx];
+    if (entry && entry.worklet) {
+      try { entry.worklet.port.postMessage('stop'); entry.worklet.disconnect(); } catch {}
+      entry.worklet = null;
+    }
+    if (currentSource) {
+      try { currentSource.stop(); } catch {};
+      currentSource = null;
+    }
+    const btn = document.getElementById("play-btn-" + currentPlayIdx);
+    if (btn) btn.innerHTML = "&#9654;";
+    const bar = document.getElementById("progress-" + currentPlayIdx);
+    if (bar) bar.style.width = "0%";
+    currentPlayIdx = null;
+  }
+}
+
+function togglePlay(idx) {
+  if (currentPlayIdx === idx) {
+    stopCurrentAudio();
+    return;
+  }
+  stopCurrentAudio();
+  playAudio(idx);
+}
+
+function playAudio(idx) {
+  const entry = audioBuffers[idx];
+  if (!entry || !entry.buffer) return;
+  const ctx = getAudioCtx();
+  if (ctx.state === "suspended") ctx.resume();
+
+  const source = ctx.createBufferSource();
+  source.buffer = entry.buffer;
+  source.connect(ctx.destination);
+  currentSource = source;
+  currentPlayIdx = idx;
+
+  const btn = document.getElementById("play-btn-" + idx);
+  const bar = document.getElementById("progress-" + idx);
+  if (btn) btn.innerHTML = "&#9724;";
+
+  const startTime = ctx.currentTime;
+  const duration = entry.buffer.duration;
+
+  function updateProgress() {
+    if (currentPlayIdx !== idx) return;
+    const elapsed = ctx.currentTime - startTime;
+    if (bar) bar.style.width = Math.min(100, elapsed / duration * 100) + "%";
+    if (elapsed < duration) requestAnimationFrame(updateProgress);
+  }
+  requestAnimationFrame(updateProgress);
+
+  source.onended = () => {
+    if (currentPlayIdx === idx) {
+      if (btn) btn.innerHTML = "&#9654;";
+      if (bar) bar.style.width = "0%";
+      currentSource = null;
+      currentPlayIdx = null;
+    }
+  };
+  source.start(0);
+}
+
+function seekAudio(event, idx) {
+  const entry = audioBuffers[idx];
+  if (!entry || !entry.buffer) return;
+  const wrap = event.currentTarget;
+  const rect = wrap.getBoundingClientRect();
+  const offset = ((event.clientX - rect.left) / rect.width) * entry.buffer.duration;
+
+  stopCurrentAudio();
+
+  const ctx = getAudioCtx();
+  const source = ctx.createBufferSource();
+  source.buffer = entry.buffer;
+  source.connect(ctx.destination);
+  currentSource = source;
+  currentPlayIdx = idx;
+
+  const btn = document.getElementById("play-btn-" + idx);
+  const bar = document.getElementById("progress-" + idx);
+  if (btn) btn.innerHTML = "&#9724;";
+
+  const startTime = ctx.currentTime;
+  const duration = entry.buffer.duration;
+
+  function updateProgress() {
+    if (currentPlayIdx !== idx) return;
+    const elapsed = ctx.currentTime - startTime + offset;
+    if (bar) bar.style.width = Math.min(100, elapsed / duration * 100) + "%";
+    if (elapsed < duration) requestAnimationFrame(updateProgress);
+  }
+  requestAnimationFrame(updateProgress);
+
+  source.onended = () => {
+    if (currentPlayIdx === idx) {
+      if (btn) btn.innerHTML = "&#9654;";
+      if (bar) bar.style.width = "0%";
+      currentSource = null;
+      currentPlayIdx = null;
+    }
+  };
+  source.start(0, offset);
+}
+
+// ── Debug Panel ──
+const debugLog = document.getElementById("debugLog");
+const debugPanel = document.getElementById("debugPanel");
+const debugToggle = document.getElementById("debugToggle");
+let debugVisible = false;
+let dbgStartTime = 0;
+let dbgChunkCount = 0;
+let dbgTotalBytes = 0;
+let dbgFirstChunkTime = 0;
+
+function toggleDebug() {
+  debugVisible = !debugVisible;
+  debugPanel.classList.toggle("visible", debugVisible);
+  debugToggle.classList.toggle("active", debugVisible);
+}
+
+function clearDebugLog() {
+  debugLog.innerHTML = "";
+  dbgChunkCount = 0;
+  dbgTotalBytes = 0;
+  dbgFirstChunkTime = 0;
+  document.getElementById("dbgChunks").textContent = "0";
+  document.getElementById("dbgBytes").textContent = "0";
+  document.getElementById("dbgDur").textContent = "0.0s";
+  document.getElementById("dbgLatency").textContent = "—";
+}
+
+function dbgLog(label, cls, msg) {
+  const el = document.createElement("div");
+  el.className = "debug-entry";
+  const t = dbgStartTime ? ((performance.now() - dbgStartTime) / 1000).toFixed(3) : "0.000";
+  el.innerHTML = `<span class="ts">${t}s</span> <span class="label ${cls}">[${label}]</span> ${msg}`;
+  debugLog.appendChild(el);
+  debugLog.scrollTop = debugLog.scrollHeight;
+}
+
+function dbgUpdateStats() {
+  document.getElementById("dbgChunks").textContent = dbgChunkCount;
+  document.getElementById("dbgBytes").textContent = dbgTotalBytes >= 1024 ? (dbgTotalBytes / 1024).toFixed(1) + " KB" : dbgTotalBytes;
+  const durSec = dbgTotalBytes / (24000 * 2); // 24kHz 16-bit mono = 48000 bytes/sec
+  document.getElementById("dbgDur").textContent = durSec.toFixed(2) + "s";
+}
+
+// ── Stream PCM via AudioWorklet (plays as chunks arrive) ──
+async function streamAndPlay(response, audioIdx) {
+  const ctx = getAudioCtx();
+  if (ctx.state === "suspended") await ctx.resume();
+  await ensureWorklet();
+
+  const worklet = new AudioWorkletNode(ctx, 'pcm-stream');
+  worklet.connect(ctx.destination);
+
+  // Reset debug state
+  dbgStartTime = performance.now();
+  dbgChunkCount = 0;
+  dbgTotalBytes = 0;
+  dbgFirstChunkTime = 0;
+  clearDebugLog();
+  dbgLog("INFO", "info", `AudioContext sampleRate: ${ctx.sampleRate}`);
+  dbgLog("INFO", "info", `Reading stream body...`);
+  dbgLog("INFO", "info", `Content-Type: ${response.headers.get("content-type") || "?"}`);
+  dbgLog("INFO", "info", `Transfer-Encoding: ${response.headers.get("transfer-encoding") || "none"}`);
+  dbgLog("INFO", "info", `Content-Length: ${response.headers.get("content-length") || "none (chunked)"}`);
+
+  const reader = response.body.getReader();
+  const allChunks = [];
+  let leftover = new Uint8Array(0);
+  let totalSamples = 0;
+
+  currentPlayIdx = audioIdx;
+  audioBuffers[audioIdx] = { buffer: null, duration: 0, streaming: true, worklet };
+  showCloneStreamingPlayer(audioIdx);
+
+  const streamStartTime = ctx.currentTime;
+  function streamProgress() {
+    if (currentPlayIdx !== audioIdx) return;
+    const elapsed = ctx.currentTime - streamStartTime;
+    const dur = document.getElementById("dur-" + audioIdx);
+    if (dur) dur.textContent = formatTime(elapsed);
+    requestAnimationFrame(streamProgress);
+  }
+  requestAnimationFrame(streamProgress);
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      dbgLog("DONE", "done", `Stream ended — ${dbgChunkCount} chunks, ${dbgTotalBytes} bytes`);
+      break;
+    }
+
+    dbgChunkCount++;
+    dbgTotalBytes += value.length;
+    if (dbgChunkCount === 1) {
+      dbgFirstChunkTime = performance.now() - dbgStartTime;
+      document.getElementById("dbgLatency").textContent = dbgFirstChunkTime.toFixed(0) + "ms";
+    }
+    dbgLog("CHUNK", "chunk", `#${dbgChunkCount} — ${value.length} bytes (total: ${dbgTotalBytes})`);
+    dbgUpdateStats();
+
+    let combined;
+    if (leftover.length > 0) {
+      combined = new Uint8Array(leftover.length + value.length);
+      combined.set(leftover);
+      combined.set(value, leftover.length);
+    } else {
+      combined = value;
+    }
+    const usable = combined.length - (combined.length % 2);
+    leftover = combined.length % 2 ? combined.slice(usable) : new Uint8Array(0);
+    if (usable === 0) continue;
+
+    const chunk = combined.slice(0, usable);
+    allChunks.push(chunk);
+    const f32 = pcmToFloat32(chunk);
+    totalSamples += f32.length;
+    worklet.port.postMessage(f32);
+    dbgLog("PLAY", "play", `Pushed ${f32.length} samples (${(f32.length / 24000 * 1000).toFixed(0)}ms) to worklet`);
+  }
+
+  // Build full buffer for replay/seek
+  const totalLen = allChunks.reduce((s, c) => s + c.length, 0);
+  const merged = new Uint8Array(totalLen);
+  let off = 0;
+  for (const c of allChunks) { merged.set(c, off); off += c.length; }
+
+  const fullBuffer = pcmToAudioBuffer(merged.buffer);
+  audioBuffers[audioIdx] = { buffer: fullBuffer, duration: fullBuffer.duration, streaming: false, worklet };
+
+  dbgLog("DONE", "done", `Buffer: ${fullBuffer.duration.toFixed(2)}s (${totalLen} bytes, ${dbgChunkCount} chunks)`);
+  dbgUpdateStats();
+  finalizeClonePlayer(audioIdx, fullBuffer.duration);
+
+  // Let worklet finish draining its queue, then clean up
+  const elapsed = ctx.currentTime - streamStartTime;
+  const remaining = Math.max(0, fullBuffer.duration - elapsed);
+  setTimeout(() => {
+    try { worklet.port.postMessage('stop'); worklet.disconnect(); } catch {}
+    if (audioBuffers[audioIdx]) audioBuffers[audioIdx].worklet = null;
+    if (currentPlayIdx === audioIdx) currentPlayIdx = null;
+  }, remaining * 1000 + 500);
+}
+
+// ── Send Message Flow ──
+async function sendMessage() {
+  const text = msgInput.value.trim();
+  if (!text || isSending) return;
+  if (!apiKeyEl.value.trim()) { apiKeyEl.focus(); apiKeyEl.style.borderColor = "var(--error)"; setTimeout(() => apiKeyEl.style.borderColor = "", 1500); return; }
+
+  isSending = true;
+  btnSend.disabled = true;
+  msgInput.value = "";
+  addUserBubble(text);
+  addCloneLoading();
+
+  try {
+    // Create conversation if needed
+    if (!conversationId) {
+      await createConversation();
+    }
+    // Fetch voice response
+    dbgStartTime = performance.now();
+    dbgLog("INFO", "info", `POST /api/v3/voice/stream — sending...`);
+    const body = { conversation_id: conversationId, message: text };
+    const r = await fetch("/api/v3/voice/stream", {
+      method: "POST",
+      headers: { "x-api-key": apiKeyEl.value, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const fetchMs = (performance.now() - dbgStartTime).toFixed(0);
+    dbgLog("INFO", "info", `Response: HTTP ${r.status} in ${fetchMs}ms`);
+    if (!r.ok) {
+      let errText = "HTTP " + r.status;
+      try { const ej = await r.json(); errText += ": " + (ej.error || ej.message || JSON.stringify(ej)); } catch {}
+      dbgLog("ERR", "err", errText);
+      replaceCloneLoadingError(errText);
+      return;
+    }
+    // Stream PCM chunks and play as they arrive
+    const audioIdx = audioBuffers.length;
+    await streamAndPlay(r, audioIdx);
+  } catch (e) {
+    replaceCloneLoadingError(e.message);
+  } finally {
+    isSending = false;
+    btnSend.disabled = false;
+    msgInput.focus();
+  }
+}
+
+// Enter key sends
+msgInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+// ── Push-to-Talk Mic ──
+let recognition = null;
+let isRecording = false;
+
+function micStart() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    msgInput.placeholder = "Mic not supported — type your message instead";
+    btnMic.title = "Speech recognition requires Chrome or Edge";
+    btnMic.style.opacity = ".4";
+    return;
+  }
+  if (isRecording) return;
+  isRecording = true;
+  btnMic.classList.add("recording");
+
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.lang = "en-US";
+
+  // Set mic device if selected
+  // Note: SpeechRecognition doesn't support deviceId directly, but we try via getUserMedia
+  const micId = micDeviceEl.value;
+  if (micId) {
+    navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: micId } } })
+      .then(s => s.getTracks().forEach(t => t.stop()))
+      .catch(() => {});
+  }
+
+  recognition.onresult = (e) => {
+    let transcript = "";
+    for (let i = 0; i < e.results.length; i++) {
+      transcript += e.results[i][0].transcript;
+    }
+    msgInput.value = transcript;
+  };
+
+  recognition.onerror = (e) => {
+    console.warn("Speech recognition error:", e.error);
+    isRecording = false;
+    btnMic.classList.remove("recording");
+  };
+
+  recognition.onend = () => {
+    isRecording = false;
+    btnMic.classList.remove("recording");
+    // Auto-send if we got text
+    if (msgInput.value.trim()) {
+      sendMessage();
+    }
+  };
+
+  recognition.start();
+}
+
+function micStop() {
+  if (recognition && isRecording) {
+    recognition.stop();
+  }
+}
+</script>
+</body>
+</html>
