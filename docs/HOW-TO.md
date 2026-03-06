@@ -94,6 +94,8 @@ python3 delphi-api-safe/scripts/test_delphi_v3.py \
 ## Endpoint coverage in full mode
 
 - `/v3/conversation`, `/v3/stream`
+- `/v3/clone`
+- `/v3/voice/stream` (requires clone with voice configured)
 - `/v3/conversation/list` (requires `--user-email`)
 - `/v3/conversation/{id}/history`
 - `/v3/questions`

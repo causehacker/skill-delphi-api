@@ -347,7 +347,7 @@
 <!-- ── Main ── -->
 <div class="main">
   <h1>Delphi V3 API Reference</h1>
-  <p class="subtitle">Interactive endpoint explorer &mdash; 21 endpoints, zero dependencies. Fill in your API key above to enable live testing.</p>
+  <p class="subtitle">Interactive endpoint explorer &mdash; 23 endpoints, zero dependencies. Fill in your API key above to enable live testing.</p>
   <div id="modeBanner"></div>
   <div id="endpoints"></div>
 </div>
@@ -531,7 +531,7 @@ const ENDPOINTS = [
         { id: "upd_phone", placeholder: "phone_number", label: "Phone Number", req: false },
         { id: "upd_sms", placeholder: "sms_opt_in", label: "SMS Opt-In", type: "select", options: ["", "true", "false"], req: false },
         { id: "upd_call", placeholder: "call_opt_in", label: "Call Opt-In", type: "select", options: ["", "true", "false"], req: false },
-        { id: "upd_tier", placeholder: "tier", label: "Tier", type: "select", options: ["", "PUBLIC", "INTERNAL"], req: false },
+        { id: "upd_tier", placeholder: "tier", label: "Tier", type: "select", options: ["", "JUST ME", "PUBLIC", "INTERNAL"], req: false },
       ],
       pathFn: (g, ex) => `/v3/users/${ex.upd_uid || "<user_id>"}`,
       bodyFn: (g, ex) => {
@@ -596,13 +596,13 @@ const ENDPOINTS = [
       pathParams: [{ name: "user_id", desc: "User UUID" }],
       body: [
         { name: "info", type: "string", req: true, desc: "The information text" },
-        { name: "info_type", type: "string", req: true, desc: "WHY_DELPHI | HOW_DELPHI | INTERESTS | PREFERENCES | PERSONAL_INFO | GOAL | JOURNAL" },
+        { name: "info_type", type: "string", req: true, desc: "GOAL | PREFERENCES | INTERESTS | PERSONAL_INFO | EXPERTISE | SITUATION | BELIEF | COMMUNICATION_STYLE | EMOTIONAL_STATE | RELATIONSHIP | WHY_DELPHI | HOW_DELPHI | JOURNAL" },
         { name: "source", type: "string", req: false, desc: "MESSAGE | MANUAL | INFERENCE | API (default: API)" },
       ],
       extra: [
         { id: "ci_uid", placeholder: "user_id", label: "User ID" },
         { id: "ci_text", placeholder: "info", label: "Info Text" },
-        { id: "ci_type", placeholder: "info_type", label: "Info Type", type: "select", options: ["JOURNAL", "WHY_DELPHI", "HOW_DELPHI", "INTERESTS", "PREFERENCES", "PERSONAL_INFO", "GOAL"] },
+        { id: "ci_type", placeholder: "info_type", label: "Info Type", type: "select", options: ["JOURNAL", "GOAL", "PREFERENCES", "INTERESTS", "PERSONAL_INFO", "EXPERTISE", "SITUATION", "BELIEF", "COMMUNICATION_STYLE", "EMOTIONAL_STATE", "RELATIONSHIP", "WHY_DELPHI", "HOW_DELPHI"] },
         { id: "ci_source", placeholder: "source", label: "Source", type: "select", options: ["API", "MESSAGE", "MANUAL", "INFERENCE"], req: false },
       ],
       pathFn: (g, ex) => `/v3/users/${ex.ci_uid || "<user_id>"}/info`,
@@ -612,6 +612,23 @@ const ENDPOINTS = [
       pathParams: [{ name: "user_id", desc: "User UUID" }, { name: "info_id", desc: "Info item UUID" }],
       extra: [{ id: "di_uid", placeholder: "user_id", label: "User ID" }, { id: "di_iid", placeholder: "info_id", label: "Info ID" }],
       pathFn: (g, ex) => `/v3/users/${ex.di_uid || "<user_id>"}/info/${ex.di_iid || "<info_id>"}`
+    },
+  ]},
+  { section: "Clone", endpoints: [
+    { method: "GET", path: "/v3/clone", summary: "Get clone profile", desc: "Retrieve the public profile of the clone associated with the API key. Returns name, slug, description, headline, purpose, tags, image URL, and initial message.",
+    },
+  ]},
+  { section: "Voice", endpoints: [
+    { method: "POST", path: "/v3/voice/stream", summary: "Stream voice response (PCM)", desc: "Send a message and receive a streamed PCM audio response. Returns raw 24kHz 16-bit mono PCM. Clone must have a voice configured. Create a conversation first via <code>POST /v3/conversation</code>.",
+      body: [
+        { name: "conversation_id", type: "string", req: true, desc: "From /v3/conversation" },
+        { name: "message", type: "string", req: true, desc: "User message (1-10,000 chars)" },
+      ],
+      extra: [
+        { id: "voice_cid", placeholder: "conversation_id", label: "Conversation ID" },
+        { id: "voice_msg", placeholder: "Hello!", label: "Message" },
+      ],
+      bodyFn: (g, ex) => ({ conversation_id: ex.voice_cid || "<conversation_id>", message: ex.voice_msg || "Hello!" })
     },
   ]},
 ];

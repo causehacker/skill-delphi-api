@@ -153,6 +153,25 @@ curl -sS -X GET "https://api.delphi.ai/v3/questions?type=pinned&count=5&randomiz
   -H "x-api-key: $DELPHI_API_KEY"
 ```
 
+### Get clone profile
+
+```bash
+curl -sS -X GET "https://api.delphi.ai/v3/clone" \
+  -H "x-api-key: $DELPHI_API_KEY"
+```
+
+### Stream voice response (PCM audio)
+
+```bash
+curl -sS -X POST "https://api.delphi.ai/v3/voice/stream" \
+  -H "x-api-key: $DELPHI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"conversation_id":"<cid>","message":"<prompt>"}' \
+  --output response.pcm
+# Convert: ffmpeg -f s16le -ar 24000 -ac 1 -i response.pcm response.wav
+# Requires: clone must have a voice configured
+```
+
 ### One-liner test
 
 ```bash

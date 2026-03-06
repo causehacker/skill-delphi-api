@@ -147,6 +147,26 @@ def test_conversation_endpoints(api_key: str, cid: Optional[str], user_email: Op
     return out
 
 
+def test_clone(api_key: str) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    st, body = http_json("GET", "/clone", api_key)
+    out["clone_get"] = {"http": st, "pass": st == "200", "preview": body[:180]}
+    return out
+
+
+def test_voice(api_key: str, cid: Optional[str], message: str) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    if not cid:
+        out["voice_stream"] = {"http": "-", "pass": False, "preview": "Skipped: no conversation_id"}
+        return out
+    # Voice returns binary PCM, not JSON. Use raw curl to check HTTP status.
+    st, body = http_json("POST", "/voice/stream", api_key, {"conversation_id": cid, "message": message}, max_time=30)
+    # Success = 200 with non-empty body (binary PCM data)
+    ok = st == "200" and len(body) > 0
+    out["voice_stream"] = {"http": st, "pass": ok, "preview": f"{len(body)} bytes" if ok else body[:180]}
+    return out
+
+
 def test_questions(api_key: str) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     st, body = http_json("GET", "/questions?type=pinned&count=5&randomize=false", api_key)
@@ -210,6 +230,10 @@ def main() -> None:
     if args.mode == "full":
         cid = output.get("chat", {}).get("conversation_id")
 
+        output["clone"] = test_clone(args.api_key)
+
+        output["voice"] = test_voice(args.api_key, cid, args.message)
+
         output["questions"] = test_questions(args.api_key)
 
         output["conversations"] = test_conversation_endpoints(
@@ -236,6 +260,10 @@ def main() -> None:
             "stream_http": c.get("stream_http"),
         }
 
+    if "clone" in output:
+        output["clone_summary"] = summarize(output["clone"])
+    if "voice" in output:
+        output["voice_summary"] = summarize(output["voice"])
     if "questions" in output:
         output["questions_summary"] = summarize(output["questions"])
     if "conversations" in output:
@@ -264,6 +292,8 @@ def main() -> None:
         print(f"  {'Chat':<22} {mark:<17} conv={cs['conversation_http']} stream={cs['stream_http']}")
 
     for key, label in [
+        ("clone_summary", "Clone"),
+        ("voice_summary", "Voice"),
         ("questions_summary", "Questions"),
         ("conversations_summary", "Conversations"),
         ("lookup_tags_summary", "Lookup & Tags"),

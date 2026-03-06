@@ -50,8 +50,10 @@ This file captures endpoint behavior learned from real tests.
   - Note: can auto-create user for whitelisted keys.
 
 - `GET /v3/users/{user_id}/flywheel` -> profile/flywheel data
-- `GET /v3/users/{user_id}/tier` -> `{"tier": "PUBLIC|INTERNAL"}`
+- `GET /v3/users/{user_id}/tier` -> `{"tier": "JUST ME|PUBLIC|INTERNAL"}`
+  - Default tier is `JUST ME` if no custom tier assigned.
 - `GET /v3/users/{user_id}/usage` -> period, quota, usage, remaining
+  - Includes message count, voice_seconds, and video_seconds.
 - `PATCH /v3/users/{user_id}` -> update user fields
   - Body fields (all optional): `name`, `phone_number`, `sms_opt_in`, `call_opt_in`, `tier` (`PUBLIC`|`INTERNAL`)
   - Expected: `200` + `success`, `user_id`, `updated_fields`, `message`
@@ -87,9 +89,27 @@ Notes:
 
 Valid `info_type` values:
 - `WHY_DELPHI`, `HOW_DELPHI`, `INTERESTS`, `PREFERENCES`, `PERSONAL_INFO`, `GOAL`, `JOURNAL`
+- `EXPERTISE`, `SITUATION`, `BELIEF`, `COMMUNICATION_STYLE`, `EMOTIONAL_STATE`, `RELATIONSHIP`
 
 Valid `source` values:
 - `MESSAGE`, `MANUAL`, `INFERENCE`, `API`
+
+## Clone
+
+- `GET /v3/clone`
+  - Expected: `200` + `id`, `name`, `slug`, `description`, `headline`, `purpose`, `tags`, `imageUrl`, `initial_message`
+  - Returns public profile of the clone associated with the API key.
+  - No parameters required.
+
+## Voice
+
+- `POST /v3/voice/stream`
+  - Body: `{"conversation_id": "<cid>", "message": "<text>"}`
+  - Expected: `200` + binary PCM audio stream (`application/octet-stream`)
+  - Response headers: `X-Audio-Format: pcm_24000_16_mono`, `X-Audio-Sample-Rate: 24000`, `X-Audio-Bits-Per-Sample: 16`, `X-Audio-Channels: 1`
+  - Convert with: `ffmpeg -f s16le -ar 24000 -ac 1 -i response.pcm response.wav`
+  - Requires: clone must have a voice configured.
+  - Requires: existing conversation (create via `POST /v3/conversation` first).
 
 ## Safety rules for testing
 
