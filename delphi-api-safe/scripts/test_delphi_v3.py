@@ -29,11 +29,58 @@ def http_json(method: str, path: str, api_key: str, payload: Optional[dict] = No
     return status.strip(), body.strip()
 
 
-def test_chat(api_key: str, slug: Optional[str], message: str) -> Dict[str, Any]:
-    conv_body: dict = {}
-    if slug:
-        conv_body["slug"] = slug
-    c_status, c_body = http_json("POST", "/conversation", api_key, conv_body)
+def http_binary(method: str, path: str, api_key: str, payload: Optional[dict] = None, max_time: int = 30) -> Tuple[str, int]:
+    """Make an HTTP request expecting binary response. Returns (status, byte_count)."""
+    data = ""
+    if payload is not None:
+        data = f" -d {shlex.quote(json.dumps(payload))}"
+    cmd = (
+        f"curl -sS --max-time {max_time} -w '\\nHTTP_STATUS:%{{http_code}}' -o /tmp/delphi_voice_test.bin -X {method} '{BASE}{path}' "
+        f"-H 'x-api-key: {api_key}' -H 'Content-Type: application/json'{data}"
+    )
+    raw = run(cmd)
+    if "HTTP_STATUS:" not in raw:
+        return "000", 0
+    _, status = raw.rsplit("HTTP_STATUS:", 1)
+    status = status.strip()
+    # Count bytes in output file
+    try:
+        import os
+        byte_count = os.path.getsize("/tmp/delphi_voice_test.bin")
+    except Exception:
+        byte_count = 0
+    return status, byte_count
+
+
+def test_clone(api_key: str) -> Dict[str, Any]:
+    """Discover clone identity via GET /v3/clone."""
+    c_status, c_body = http_json("GET", "/clone", api_key)
+    if c_status == "200":
+        try:
+            data = json.loads(c_body)
+            return {
+                "clone": "PASS",
+                "clone_http": c_status,
+                "clone_name": data.get("name", "Unknown"),
+                "clone_data": {k: data.get(k, "") for k in ("name", "description", "headline", "purpose")},
+            }
+        except Exception:
+            return {
+                "clone": "PASS",
+                "clone_http": c_status,
+                "clone_name": "Unknown",
+                "clone_data": {},
+            }
+    return {
+        "clone": "FAIL",
+        "clone_http": c_status,
+        "clone_name": None,
+        "clone_body": c_body[:240],
+    }
+
+
+def test_chat(api_key: str, message: str) -> Dict[str, Any]:
+    c_status, c_body = http_json("POST", "/conversation", api_key, {})
     cid = None
     if c_status == "200":
         try:
@@ -53,14 +100,11 @@ def test_chat(api_key: str, slug: Optional[str], message: str) -> Dict[str, Any]
             "conversation_body": c_body[:240],
         }
 
-    stream_body: dict = {"message": message, "conversation_id": cid}
-    if slug:
-        stream_body["slug"] = slug
     s_status, s_body = http_json(
         "POST",
         "/stream",
         api_key,
-        stream_body,
+        {"message": message, "conversation_id": cid},
         stream=True,
     )
     s_ok = s_status == "200" and "data:" in s_body and "[DONE]" in s_body
@@ -73,6 +117,44 @@ def test_chat(api_key: str, slug: Optional[str], message: str) -> Dict[str, Any]
         "stream_http": s_status,
         "conversation_id": cid,
         "stream_preview": s_body[:280],
+    }
+
+
+def test_voice(api_key: str, message: str) -> Dict[str, Any]:
+    """Test voice streaming via POST /v3/voice/stream."""
+    # Need a conversation_id first
+    c_status, c_body = http_json("POST", "/conversation", api_key, {})
+    cid = None
+    if c_status == "200":
+        try:
+            cid = json.loads(c_body).get("conversation_id")
+        except Exception:
+            cid = None
+
+    if not cid:
+        return {
+            "voice": "FAIL",
+            "voice_http": "-",
+            "note": f"could not create conversation (http {c_status})",
+            "byte_count": 0,
+        }
+
+    v_status, byte_count = http_binary(
+        "POST",
+        "/voice/stream",
+        api_key,
+        {"message": message, "conversation_id": cid},
+        max_time=30,
+    )
+
+    # Voice is PASS if we got 200 and received some PCM data (at least 4800 bytes = 0.1s of audio)
+    v_ok = v_status == "200" and byte_count >= 4800
+    return {
+        "voice": "PASS" if v_ok else "FAIL",
+        "voice_http": v_status,
+        "byte_count": byte_count,
+        "duration_estimate": f"{byte_count / 48000:.1f}s" if byte_count > 0 else "0s",
+        "note": "" if v_ok else (f"voice http {v_status}" if v_status != "200" else f"too few bytes ({byte_count})"),
     }
 
 
@@ -110,7 +192,7 @@ def test_user_endpoints(api_key: str, user_id: str, allow_write: bool, tag_name:
                 "POST",
                 f"/users/{user_id}/info",
                 api_key,
-                {"info": info_text, "source": "API", "info_type": "JOURNAL"},
+                {"text": info_text, "source": "API", "info_type": "JOURNAL"},
             )
             info_id = None
             if st == "200":
@@ -123,75 +205,6 @@ def test_user_endpoints(api_key: str, user_id: str, allow_write: bool, tag_name:
                 dst, dbody = http_json("DELETE", f"/users/{user_id}/info/{info_id}", api_key)
                 out["info_delete"] = {"http": dst, "pass": dst == "200", "preview": dbody[:180]}
 
-    return out
-
-
-def test_conversation_endpoints(api_key: str, cid: Optional[str], user_email: Optional[str], allow_write: bool) -> Dict[str, Any]:
-    out: Dict[str, Any] = {}
-
-    if user_email:
-        st, body = http_json("GET", f"/conversation/list?email={user_email}", api_key)
-        out["conversation_list"] = {"http": st, "pass": st == "200", "preview": body[:180]}
-
-    if cid:
-        st, body = http_json("GET", f"/conversation/{cid}/history?include_citations=false", api_key)
-        out["conversation_history"] = {"http": st, "pass": st == "200", "preview": body[:180]}
-
-        if allow_write:
-            st, body = http_json("PUT", f"/conversation/{cid}/title", api_key, {"title": "API Test Title"})
-            out["conversation_title"] = {"http": st, "pass": st == "200", "preview": body[:180]}
-
-            st, body = http_json("DELETE", f"/conversation/{cid}", api_key)
-            out["conversation_delete"] = {"http": st, "pass": st == "200", "preview": body[:180]}
-
-    return out
-
-
-def test_clone(api_key: str) -> Dict[str, Any]:
-    out: Dict[str, Any] = {}
-    st, body = http_json("GET", "/clone", api_key)
-    out["clone_get"] = {"http": st, "pass": st == "200", "preview": body[:180]}
-    return out
-
-
-def test_voice(api_key: str, cid: Optional[str], message: str) -> Dict[str, Any]:
-    out: Dict[str, Any] = {}
-    if not cid:
-        out["voice_stream"] = {"http": "-", "pass": False, "preview": "Skipped: no conversation_id"}
-        return out
-    # Voice returns binary PCM, not JSON — write to temp file and check HTTP status + file size.
-    import tempfile, os
-    tmp = tempfile.mktemp(suffix=".pcm")
-    payload = shlex.quote(json.dumps({"conversation_id": cid, "message": message}))
-    cmd = (
-        f"curl -sS --max-time 30 -w 'HTTP_STATUS:%{{http_code}}' -X POST '{BASE}/voice/stream' "
-        f"-H 'x-api-key: {api_key}' -H 'Content-Type: application/json' "
-        f"-d {payload} --output {shlex.quote(tmp)}"
-    )
-    p = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-    raw = (p.stdout or "") + (p.stderr or "")
-    st = "000"
-    if "HTTP_STATUS:" in raw:
-        st = raw.rsplit("HTTP_STATUS:", 1)[1].strip()
-    size = 0
-    try:
-        size = os.path.getsize(tmp)
-    except OSError:
-        pass
-    try:
-        os.unlink(tmp)
-    except OSError:
-        pass
-    ok = st == "200" and size > 0
-    preview = f"{size} bytes PCM audio" if ok else (f"http {st}" if st != "200" else "empty response")
-    out["voice_stream"] = {"http": st, "pass": ok, "preview": preview}
-    return out
-
-
-def test_questions(api_key: str) -> Dict[str, Any]:
-    out: Dict[str, Any] = {}
-    st, body = http_json("GET", "/questions?type=pinned&count=5&randomize=false", api_key)
-    out["questions_get"] = {"http": st, "pass": st == "200", "preview": body[:180]}
     return out
 
 
@@ -213,8 +226,7 @@ def test_lookup_and_tags(api_key: str, user_email: Optional[str], allow_write: b
 
     if allow_write and tag_name:
         st, body = http_json("POST", "/tags", api_key, {"name": tag_name, "color": "#3B82F6"})
-        # 409 = tag already exists, which is fine (proves the endpoint is working)
-        out["tags_create"] = {"http": st, "pass": st in ("200", "409"), "preview": body[:180]}
+        out["tags_create"] = {"http": st, "pass": st == "200", "preview": body[:180]}
 
     out["derived_user_id"] = user_id
     return out
@@ -230,9 +242,8 @@ def summarize(result: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Delphi V3 tester (chat + users + tags + info)")
+    ap = argparse.ArgumentParser(description="Delphi V3 tester (clone + chat + voice + users + tags + info)")
     ap.add_argument("--api-key", required=True)
-    ap.add_argument("--slug", help="Clone slug for conversation/stream checks")
     ap.add_argument("--account", default="Account")
     ap.add_argument("--message", default="Please answer in one short sentence to test stream.")
     ap.add_argument("--mode", choices=["chat", "full"], default="chat")
@@ -241,26 +252,22 @@ def main() -> None:
     ap.add_argument("--tag-name", help="Tag name for tag/untag tests (required for write tag tests)")
     ap.add_argument("--info-text", help="Text for user info create/delete test")
     ap.add_argument("--allow-write", action="store_true", help="Enable write endpoints (PATCH/POST/DELETE)")
+    ap.add_argument("--test-voice", action="store_true", help="Include voice streaming test")
     args = ap.parse_args()
 
     output: Dict[str, Any] = {"account": args.account, "mode": args.mode}
 
+    # Always discover clone identity first
+    output["clone"] = test_clone(args.api_key)
+
     if args.mode in ("chat", "full"):
-        output["chat"] = test_chat(args.api_key, args.slug, args.message)
+        output["chat"] = test_chat(args.api_key, args.message)
+
+    # Voice test (optional, since not all clones have voice)
+    if args.test_voice:
+        output["voice"] = test_voice(args.api_key, args.message)
 
     if args.mode == "full":
-        cid = output.get("chat", {}).get("conversation_id")
-
-        output["clone"] = test_clone(args.api_key)
-
-        output["voice"] = test_voice(args.api_key, cid, args.message)
-
-        output["questions"] = test_questions(args.api_key)
-
-        output["conversations"] = test_conversation_endpoints(
-            args.api_key, cid, args.user_email, args.allow_write
-        )
-
         lookup_tags = test_lookup_and_tags(args.api_key, args.user_email, args.allow_write, args.tag_name)
         output["lookup_tags"] = lookup_tags
 
@@ -273,6 +280,14 @@ def main() -> None:
             }
 
     # summaries
+    if "clone" in output:
+        c = output["clone"]
+        output["clone_summary"] = {
+            "overall": c.get("clone", "UNKNOWN"),
+            "clone_http": c.get("clone_http"),
+            "clone_name": c.get("clone_name"),
+        }
+
     if "chat" in output:
         c = output["chat"]
         output["chat_summary"] = {
@@ -281,60 +296,21 @@ def main() -> None:
             "stream_http": c.get("stream_http"),
         }
 
-    if "clone" in output:
-        output["clone_summary"] = summarize(output["clone"])
     if "voice" in output:
-        output["voice_summary"] = summarize(output["voice"])
-    if "questions" in output:
-        output["questions_summary"] = summarize(output["questions"])
-    if "conversations" in output:
-        output["conversations_summary"] = summarize(output["conversations"])
+        v = output["voice"]
+        output["voice_summary"] = {
+            "overall": v.get("voice", "UNKNOWN"),
+            "voice_http": v.get("voice_http"),
+            "byte_count": v.get("byte_count"),
+            "duration_estimate": v.get("duration_estimate"),
+        }
+
     if "lookup_tags" in output:
         output["lookup_tags_summary"] = summarize(output["lookup_tags"])
     if "users" in output and isinstance(output["users"], dict):
         output["users_summary"] = summarize(output["users"])
 
     print(json.dumps(output, indent=2))
-
-    # ── Human-readable summary table ──
-    print()
-    print("=" * 52)
-    print(f"  {'Section':<22} {'Result':<8} {'Checks'}")
-    print("-" * 52)
-
-    all_pass = True
-
-    if "chat_summary" in output:
-        cs = output["chat_summary"]
-        ok = cs["overall"] == "PASS"
-        if not ok:
-            all_pass = False
-        mark = "\033[92mPASS\033[0m" if ok else "\033[91mFAIL\033[0m"
-        print(f"  {'Chat':<22} {mark:<17} conv={cs['conversation_http']} stream={cs['stream_http']}")
-
-    for key, label in [
-        ("clone_summary", "Clone"),
-        ("voice_summary", "Voice"),
-        ("questions_summary", "Questions"),
-        ("conversations_summary", "Conversations"),
-        ("lookup_tags_summary", "Lookup & Tags"),
-        ("users_summary", "Users"),
-    ]:
-        if key in output:
-            s = output[key]
-            ok = s["overall"] == "PASS"
-            if not ok:
-                all_pass = False
-            mark = "\033[92mPASS\033[0m" if ok else "\033[91mFAIL\033[0m"
-            print(f"  {label:<22} {mark:<17} {s['passed']}/{s['checks']}")
-
-    print("-" * 52)
-    if all_pass:
-        print("  \033[92m\033[1mALL PASS\033[0m")
-    else:
-        print("  \033[91m\033[1mSOME FAILURES\033[0m — check JSON above for details")
-    print("=" * 52)
-    print()
 
 
 if __name__ == "__main__":

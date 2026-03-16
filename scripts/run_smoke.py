@@ -25,7 +25,6 @@ def main():
         cfg = json.load(f)
 
     api_key = cfg.get("api_key", "").strip()
-    slug = cfg.get("slug", "").strip()
     account = cfg.get("account", "Account")
     message = cfg.get("message", "Please answer in one short sentence to test stream.")
 
@@ -44,9 +43,6 @@ def main():
         "--mode",
         args.mode,
     ]
-
-    if slug and slug != "REPLACE_WITH_CLONE_SLUG":
-        cmd += ["--slug", slug]
 
     if args.mode == "full":
         user_email = cfg.get("user_email", "").strip()

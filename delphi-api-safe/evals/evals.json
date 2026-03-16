@@ -1,0 +1,35 @@
+{
+  "skill_name": "delphi-api-safe",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "test this delphi key: dsk-abc123XYZ for Jay Shetty",
+      "expected_output": "Should discover clone via GET /v3/clone, run conversation + stream test, produce pass/fail table with redacted key (dsk-****XYZ)"
+    },
+    {
+      "id": 2,
+      "prompt": "is my clone working? key is dsk-xyz789ABC",
+      "expected_output": "Should trigger skill, attempt clone discovery, report results clearly even if user didn't say 'test' or 'Delphi'"
+    },
+    {
+      "id": 3,
+      "prompt": "run a full test on these 3 accounts: key1=dsk-aaa, key2=dsk-bbb, key3=dsk-ccc",
+      "expected_output": "Should test all 3, discover each clone identity, produce multi-row summary table with all keys redacted"
+    },
+    {
+      "id": 4,
+      "prompt": "new delphi for Dr. Ramani - dsk-testKeyHere123",
+      "expected_output": "Should recognize this as a test request for a new Delphi account, discover clone, run baseline checks, report results"
+    },
+    {
+      "id": 5,
+      "prompt": "I'm getting a 500 error when I try to stream from my clone. Here's my key: dsk-broken999",
+      "expected_output": "Should troubleshoot: discover clone, test conversation, test stream, if 500 confirmed generate incident report with repro steps and conversation_id"
+    },
+    {
+      "id": 6,
+      "prompt": "check my Delphi dsk-quickCheck42",
+      "expected_output": "Should trigger on casual phrasing, discover clone, run basic health check, report pass/fail"
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 # Intake Checklist (Non-Technical Safe Mode)
 
-Use this checklist before running tests.
+Use this checklist before running tests — but only ask for what's actually missing.
 
-## Always ask first if missing
+## Required inputs (ask only if missing)
 
 1. What do you want to do?
    - test one clone
@@ -14,15 +14,15 @@ Use this checklist before running tests.
    - API key(s), or
    - permission to use already-provided key(s)
 
-3. Which clones? (optional — omit to use account default)
-   - exact slug(s) if targeting specific clones
-   - if only names provided, ask whether to auto-discover slug variants
-   - leave blank to use the account's default clone
-
-4. Any constraints?
+3. Any constraints?
    - do not expose keys in output
    - redact IDs in report
    - include timestamps/timezone
+
+## Clone identity is auto-discovered
+
+Use `GET /v3/clone` with the provided key to discover which clone the key belongs to.
+Do not ask the user for a clone name or identifier — the API tells you.
 
 ## Never assume
 

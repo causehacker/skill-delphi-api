@@ -101,12 +101,6 @@ def main():
     else:
         api_key = ask("API key", required=True)
 
-    prev_slug = existing.get("slug", "")
-    if prev_slug and prev_slug != "REPLACE_WITH_CLONE_SLUG":
-        slug = ask("Clone slug (optional)", default=prev_slug)
-    else:
-        slug = ask("Clone slug (optional, leave blank to use account default)")
-
     print()
     print(f"  {BOLD}Options{RESET}")
     print()
@@ -146,7 +140,6 @@ def main():
     config = {
         "account": account,
         "api_key": api_key,
-        "slug": slug,
         "mode": mode,
         "message": message,
         "user_email": user_email,

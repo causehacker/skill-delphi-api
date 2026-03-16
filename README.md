@@ -18,7 +18,7 @@ This repo contains:
 
 - Runs safe Delphi V3 checks for conversation, stream, users, tags, and user info endpoints
 - Handles self-discovery first, then asks for missing required inputs
-- Never invents sensitive/user-specific values (emails, API keys, slugs)
+- Never invents sensitive/user-specific values (emails, API keys)
 - Produces pass/fail matrices and incident-ready reports
 - Uses deterministic script-based testing for repeatable results
 
@@ -35,8 +35,7 @@ The skill always requests missing required info before acting. It will ask for:
 
 1. Goal (single test, multi-account sweep, incident report)
 2. Credentials (API key(s) or permission to use known keys)
-3. Targets (clone slug(s) — optional, uses account default if omitted)
-4. Constraints (redaction, timestamp inclusion, output style)
+3. Constraints (redaction, timestamp inclusion, output style)
 
 ## Local usage (script)
 
@@ -70,7 +69,6 @@ python3 delphi-api-safe/scripts/test_delphi_v3.py \
   --api-key "$DELPHI_API_KEY" \
   --account "Jim Carter" \
   --mode chat
-# Optional: add --slug "jc3" to target a specific clone
 ```
 
 Full endpoint sweep (read-only):
@@ -80,7 +78,6 @@ python3 delphi-api-safe/scripts/test_delphi_v3.py \
   --api-key "$DELPHI_API_KEY" \
   --mode full \
   --user-email "real-user@example.com"
-# Optional: add --slug "jc3" to target a specific clone
 ```
 
 Full endpoint sweep (includes writes, explicit opt-in):
@@ -93,7 +90,6 @@ python3 delphi-api-safe/scripts/test_delphi_v3.py \
   --allow-write \
   --tag-name "api-test-tag" \
   --info-text "safe test note"
-# Optional: add --slug "jc3" to target a specific clone
 ```
 
 ## Interactive API Reference (browser)
