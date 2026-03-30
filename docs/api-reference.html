@@ -304,6 +304,24 @@
   .stream-toggle:hover { background: #e5e7eb; color: var(--text); }
   .stream-toggle.active { background: var(--post-bg); color: var(--post); border-color: #bfdbfe; }
 
+  /* Synthesize audio player */
+  .synth-player {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; margin-top: 8px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); font-size: 13px;
+  }
+  .synth-play-btn {
+    background: var(--post); color: #fff; border: none; border-radius: 50%;
+    width: 32px; height: 32px; font-size: 14px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .12s;
+  }
+  .synth-play-btn:hover { background: #1d4ed8; }
+  .synth-bar-track { flex: 1; height: 4px; background: var(--border); border-radius: 2px; position: relative; }
+  .synth-bar-fill { height: 100%; background: var(--post); border-radius: 2px; width: 0%; transition: width .1s linear; }
+  .synth-dur { color: var(--text-secondary); font-size: 11px; min-width: 40px; text-align: right; }
+
   /* Auto-filled fields */
   .ep-extra.auto-filled {
     border-color: var(--get) !important;
@@ -1002,6 +1020,11 @@ function renderEndpoint(ep, idx) {
               <button class="btn-copy-resp" id="btn-copy-resp-${idx}" onclick="copyResponse(${idx})">&#128203; Copy</button>
             </div>
             <pre class="response-body" id="resp-body-${idx}"></pre>
+            <div class="synth-player" id="synth-player-${idx}" style="display:none">
+              <button class="synth-play-btn" id="synth-btn-${idx}" onclick="synthToggle(${idx})">&#9654;</button>
+              <div class="synth-bar-track"><div class="synth-bar-fill" id="synth-bar-${idx}"></div></div>
+              <span class="synth-dur" id="synth-dur-${idx}">0.0s</span>
+            </div>
           </div>`}
         </div>
       </div>
@@ -1325,18 +1348,48 @@ async function sendReq(idx) {
   };
   if (body && Object.keys(body).length > 0 && ep.method !== "GET") opts.body = JSON.stringify(body);
 
+  // Check if this is a synthesize endpoint with stream=true (binary PCM response)
+  const isSynthStream = ep.path === "/v3/voice/synthesize" && url.includes("stream=true");
+  const isSynth = ep.path === "/v3/voice/synthesize";
+
   const t0 = performance.now();
   try {
     const res = await fetch(url, opts);
     const ms = Math.round(performance.now() - t0);
-    const text = await res.text();
-    let pretty = text;
-    try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch {}
 
     statusEl.textContent = res.status;
     statusEl.className = "status-code " + (res.status < 300 ? "s2xx" : res.status < 500 ? "s4xx" : "s5xx");
     timeEl.textContent = ms + " ms";
-    bodyEl.textContent = pretty;
+
+    if (isSynthStream && res.ok) {
+      // Binary PCM streaming response — read as ArrayBuffer
+      const buf = await res.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      bodyEl.textContent = `Binary PCM audio: ${bytes.byteLength.toLocaleString()} bytes (${(bytes.byteLength / 48000).toFixed(1)}s at 24kHz/16-bit)`;
+      synthLoadPcmBytes(idx, bytes);
+    } else if (isSynth && res.ok) {
+      // Batch JSON response with base64 audio
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = null; }
+      if (data && data.audio) {
+        const audioB64 = data.audio;
+        const binStr = atob(audioB64);
+        const bytes = new Uint8Array(binStr.length);
+        for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+        bodyEl.textContent = `Base64 PCM audio: ${bytes.byteLength.toLocaleString()} bytes decoded (${(bytes.byteLength / 48000).toFixed(1)}s at 24kHz/16-bit)\n\nResponse JSON has "audio" field (base64, ${audioB64.length.toLocaleString()} chars)`;
+        synthLoadPcmBytes(idx, bytes);
+      } else {
+        let pretty = text;
+        try { pretty = JSON.stringify(data || JSON.parse(text), null, 2); } catch {}
+        bodyEl.textContent = pretty;
+      }
+    } else {
+      const text = await res.text();
+      let pretty = text;
+      try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch {}
+      bodyEl.textContent = pretty;
+    }
   } catch (err) {
     const ms = Math.round(performance.now() - t0);
     statusEl.textContent = "ERR";
@@ -1345,6 +1398,92 @@ async function sendReq(idx) {
     bodyEl.textContent = err.message + "\n\nProxy may be down. Restart with: python3 docs/serve.py";
   }
 }
+
+/* ── Synthesize Audio Player ── */
+const synthBuffers = {};    // idx -> AudioBuffer
+let synthCurrentIdx = null;
+let synthCurrentSource = null;
+let synthAnimFrame = null;
+let synthStartTime = 0;
+let synthStartOffset = 0;
+
+function synthGetCtx() {
+  if (!window._synthCtx) window._synthCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+  return window._synthCtx;
+}
+
+function synthLoadPcmBytes(idx, bytes) {
+  const int16 = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength >> 1);
+  const f32 = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768;
+
+  const ctx = synthGetCtx();
+  const buf = ctx.createBuffer(1, f32.length, 24000);
+  buf.getChannelData(0).set(f32);
+  synthBuffers[idx] = buf;
+
+  // Show the player
+  const player = $id("synth-player-" + idx);
+  if (player) {
+    player.style.display = "flex";
+    $id("synth-dur-" + idx).textContent = buf.duration.toFixed(1) + "s";
+    $id("synth-bar-" + idx).style.width = "0%";
+    $id("synth-btn-" + idx).innerHTML = "&#9654;";
+  }
+}
+
+function synthStop() {
+  if (synthAnimFrame) { cancelAnimationFrame(synthAnimFrame); synthAnimFrame = null; }
+  if (synthCurrentSource) { try { synthCurrentSource.stop(); } catch {} synthCurrentSource = null; }
+  if (synthCurrentIdx !== null) {
+    const btn = $id("synth-btn-" + synthCurrentIdx);
+    const bar = $id("synth-bar-" + synthCurrentIdx);
+    if (btn) btn.innerHTML = "&#9654;";
+    if (bar) bar.style.width = "0%";
+    synthCurrentIdx = null;
+  }
+}
+
+function synthPlay(idx, offset) {
+  const buf = synthBuffers[idx];
+  if (!buf) return;
+  const ctx = synthGetCtx();
+  if (ctx.state === "suspended") ctx.resume();
+
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  src.start(0, offset);
+  synthCurrentSource = src;
+  synthCurrentIdx = idx;
+  synthStartTime = ctx.currentTime;
+  synthStartOffset = offset;
+
+  $id("synth-btn-" + idx).innerHTML = "&#9632;";
+
+  src.onended = () => {
+    if (synthCurrentIdx === idx) {
+      synthStop();
+      const bar = $id("synth-bar-" + idx); if (bar) bar.style.width = "100%";
+    }
+  };
+
+  // Animate progress bar
+  function tick() {
+    if (synthCurrentIdx !== idx) return;
+    const elapsed = synthStartOffset + (ctx.currentTime - synthStartTime);
+    const pct = Math.min(100, (elapsed / buf.duration) * 100);
+    const bar = $id("synth-bar-" + idx); if (bar) bar.style.width = pct + "%";
+    synthAnimFrame = requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+window.synthToggle = function(idx) {
+  if (synthCurrentIdx === idx) { synthStop(); return; }
+  synthStop();
+  synthPlay(idx, 0);
+};
 
 function formatPaste(idx) {
   const pasteEl = $id("paste-" + idx);

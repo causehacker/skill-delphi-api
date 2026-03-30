@@ -167,6 +167,8 @@ class ProxyHandler(http.server.SimpleHTTPRequestHandler):
         if self._is_proxy():
             if self.path.startswith("/api/v3/voice/stream"):
                 self._proxy_binary()
+            elif self.path.startswith("/api/v3/voice/synthesize") and "stream=true" in self.path:
+                self._proxy_binary()
             elif self.path.startswith("/api/v3/stream"):
                 self._proxy_stream()
             else:
