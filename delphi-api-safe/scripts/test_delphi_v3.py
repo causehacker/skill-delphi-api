@@ -57,7 +57,9 @@ def test_clone(api_key: str) -> Dict[str, Any]:
     c_status, c_body = http_json("GET", "/clone", api_key)
     if c_status == "200":
         try:
-            data = json.loads(c_body)
+            raw = json.loads(c_body)
+            # Response may wrap in a "clone" key or be flat
+            data = raw.get("clone", raw) if isinstance(raw, dict) else raw
             return {
                 "clone": "PASS",
                 "clone_http": c_status,
@@ -155,6 +157,33 @@ def test_voice(api_key: str, message: str) -> Dict[str, Any]:
         "byte_count": byte_count,
         "duration_estimate": f"{byte_count / 48000:.1f}s" if byte_count > 0 else "0s",
         "note": "" if v_ok else (f"voice http {v_status}" if v_status != "200" else f"too few bytes ({byte_count})"),
+    }
+
+
+def test_synthesize(api_key: str) -> Dict[str, Any]:
+    """Test TTS synthesis via POST /v3/voice/synthesize (batch mode — returns base64 JSON)."""
+    s_status, s_body = http_json(
+        "POST",
+        "/voice/synthesize",
+        api_key,
+        {"text": "Hello, this is a test of the synthesis endpoint."},
+        max_time=30,
+    )
+    has_audio = False
+    if s_status == "200":
+        try:
+            data = json.loads(s_body)
+            audio_b64 = data.get("audio", "")
+            has_audio = len(audio_b64) > 100  # base64 PCM should be substantial
+        except Exception:
+            pass
+
+    s_ok = s_status == "200" and has_audio
+    return {
+        "synthesize": "PASS" if s_ok else "FAIL",
+        "synthesize_http": s_status,
+        "has_audio": has_audio,
+        "note": "" if s_ok else (f"synthesize http {s_status}" if s_status != "200" else "no audio in response"),
     }
 
 
@@ -263,9 +292,10 @@ def main() -> None:
     if args.mode in ("chat", "full"):
         output["chat"] = test_chat(args.api_key, args.message)
 
-    # Voice test (optional, since not all clones have voice)
+    # Voice tests (optional, since not all clones have voice)
     if args.test_voice:
         output["voice"] = test_voice(args.api_key, args.message)
+        output["synthesize"] = test_synthesize(args.api_key)
 
     if args.mode == "full":
         lookup_tags = test_lookup_and_tags(args.api_key, args.user_email, args.allow_write, args.tag_name)
@@ -303,6 +333,14 @@ def main() -> None:
             "voice_http": v.get("voice_http"),
             "byte_count": v.get("byte_count"),
             "duration_estimate": v.get("duration_estimate"),
+        }
+
+    if "synthesize" in output:
+        s = output["synthesize"]
+        output["synthesize_summary"] = {
+            "overall": s.get("synthesize", "UNKNOWN"),
+            "synthesize_http": s.get("synthesize_http"),
+            "has_audio": s.get("has_audio"),
         }
 
     if "lookup_tags" in output:
