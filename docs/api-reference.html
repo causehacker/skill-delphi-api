@@ -753,6 +753,23 @@ const ENDPOINTS = [
       ],
       bodyFn: (g, ex) => ({ conversation_id: ex.voice_cid || "<conversation_id>", message: ex.voice_msg || "Hello!" })
     },
+    { method: "POST", path: "/v3/voice/synthesize", summary: "Synthesize speech (TTS)", desc: "Convert text to speech audio. No conversation needed — just text in, audio out. Clone must have a voice configured. With <code>?stream=true</code> returns raw PCM stream; without it returns base64-encoded PCM in JSON.",
+      body: [
+        { name: "text", type: "string", req: true, desc: "Text to synthesize (1-10,000 chars)" },
+      ],
+      query: [
+        { name: "stream", type: "boolean", req: false, desc: "If true, returns raw PCM stream instead of base64 JSON (default: false)" },
+      ],
+      extra: [
+        { id: "synth_text", placeholder: "Hello, world!", label: "Text" },
+        { id: "synth_stream", placeholder: "stream", label: "Stream PCM", type: "select", options: ["false", "true"], req: false },
+      ],
+      queryFn: (g, ex) => {
+        if (ex && ex.synth_stream === "true") return "?stream=true";
+        return "";
+      },
+      bodyFn: (g, ex) => ({ text: ex.synth_text || "Hello, world!" })
+    },
   ]},
 ];
 

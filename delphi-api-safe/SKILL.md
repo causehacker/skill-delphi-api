@@ -14,6 +14,7 @@ Run Delphi V3 API tests in a non-destructive, user-safe way. Prefer reproducible
   - `POST /v3/conversation` — create a conversation
   - `POST /v3/stream` — SSE text streaming
   - `POST /v3/voice/stream` — binary PCM audio streaming (24kHz, 16-bit, mono)
+  - `POST /v3/voice/synthesize` — text-to-speech (batch base64 or streaming PCM)
   - `POST /v3/users/lookup`
   - `GET /v3/users/{user_id}/flywheel`
   - `GET /v3/users/{user_id}/tier`

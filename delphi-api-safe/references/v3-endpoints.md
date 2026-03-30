@@ -33,6 +33,15 @@ This file captures endpoint behavior learned from real tests.
   - Requires clone to have a voice configured; returns error if not available
   - PCM-to-Float32 conversion: `Int16Array` value / 32768
 
+- `POST /v3/voice/synthesize`
+  - Text-to-speech: converts text to audio without needing a conversation
+  - Body: `{"text": "..."}`  (1-10,000 chars)
+  - Query param: `?stream=true` for raw PCM stream, omit for base64 JSON response
+  - Batch response (default): `{"audio": "<base64-encoded PCM>"}`
+  - Streaming response: same binary PCM format as /v3/voice/stream
+  - Same `X-Audio-*` headers when streaming
+  - Requires clone to have a voice configured
+
 ## Users
 
 - `POST /v3/users/lookup`

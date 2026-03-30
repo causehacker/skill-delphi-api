@@ -112,7 +112,7 @@ python3 docs/serve.py --port 9000  # custom port
 
 ### What it does
 
-- **23 endpoint cards** organized by section (Conversations, Questions, Users, Tags, User Info, Clone, Voice)
+- **24 endpoint cards** organized by section (Conversations, Questions, Users, Tags, User Info, Clone, Voice)
 - **Send button** fires requests through a local CORS proxy — responses render inline
 - **SSE streaming** for `/v3/stream` — tokens appear live with a blinking cursor, token counter, and raw SSE toggle
 - **Curl copy** on every endpoint — one click to clipboard, ready to paste in terminal
