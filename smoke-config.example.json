@@ -6,5 +6,7 @@
   "user_email": "",
   "allow_write": false,
   "tag_name": "",
-  "info_text": ""
+  "info_text": "",
+  "test_search": false,
+  "search_query": "What is your background?"
 }

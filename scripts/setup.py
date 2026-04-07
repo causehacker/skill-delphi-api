@@ -114,6 +114,15 @@ def main():
         default=existing.get("mode", "chat"),
     )
 
+    # --- Search (Immortal plan) ---
+    test_search = ask_bool(
+        "Enable search tests? (Immortal plan — searches clone's knowledge base)",
+        default=existing.get("test_search", False),
+    )
+    search_query = ""
+    if test_search:
+        search_query = ask("Search query", default=existing.get("search_query", "What is your background?"))
+
     # --- Full-mode extras ---
     user_email = ""
     allow_write = False
@@ -146,6 +155,8 @@ def main():
         "allow_write": allow_write,
         "tag_name": tag_name,
         "info_text": info_text,
+        "test_search": test_search,
+        "search_query": search_query,
     }
 
     # --- Preview ---
@@ -173,6 +184,8 @@ def main():
         print(f"    make smoke")
     else:
         print(f"    make smoke-full")
+    if test_search:
+        print(f"    make smoke-search   {DIM}# chat + knowledge base search{RESET}")
     print()
 
 
