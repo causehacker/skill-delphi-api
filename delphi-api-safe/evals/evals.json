@@ -30,6 +30,16 @@
       "id": 6,
       "prompt": "check my Delphi dsk-quickCheck42",
       "expected_output": "Should trigger on casual phrasing, discover clone, run basic health check, report pass/fail"
+    },
+    {
+      "id": 7,
+      "prompt": "search my clone's knowledge base for anything about fundraising. key: dsk-searchTest99",
+      "expected_output": "Should use POST /v3/search/query with query=['fundraising'], display returned chunks with source attribution, redact key as dsk-****t99"
+    },
+    {
+      "id": 8,
+      "prompt": "what content sources does my clone have? dsk-contentList42",
+      "expected_output": "Should use POST /v3/search/content to discover available content sources, list titles and types, redact key"
     }
   ]
 }

@@ -29,6 +29,8 @@ Run Delphi V3 API tests in a non-destructive, user-safe way. Prefer reproducible
   - `GET /v3/users/{user_id}/info`
   - `POST /v3/users/{user_id}/info`
   - `DELETE /v3/users/{user_id}/info/{info_id}`
+  - `POST /v3/search/query` — semantic + keyword search across clone's knowledge base
+  - `POST /v3/search/content` — search content sources by title or description
 - See `references/v3-endpoints.md` for request/response expectations and known quirks.
 - Never invent user data (emails, API keys, clone names, webhook URLs). Users often share test output with teammates or paste it into tickets — invented data causes confusion and erodes trust.
 - If a required field is missing, ask a direct question before proceeding.
@@ -133,6 +135,24 @@ curl -i -N -X POST "https://api.delphi.ai/v3/stream" \
   -d "{\"message\":\"<prompt>\",\"conversation_id\":\"$CID\"}"
 ```
 
+### Search knowledge base
+
+```bash
+curl -sS -X POST "https://api.delphi.ai/v3/search/query" \
+  -H "x-api-key: $DELPHI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query": ["<semantic query>"], "keywords": ["<keyword>"], "limit": 5}'
+```
+
+### Search content sources
+
+```bash
+curl -sS -X POST "https://api.delphi.ai/v3/search/content" \
+  -H "x-api-key: $DELPHI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query": ["<topic or title>"]}'
+```
+
 ## Non-technical UX rules
 
 - Explain each result in one line: "Create worked, stream failed with 500".
@@ -165,6 +185,16 @@ python3 scripts/test_delphi_v3.py \
   --api-key "$DELPHI_API_KEY" \
   --mode full \
   --user-email "<real-user-email>"
+```
+
+Run search tests (Immortal plan):
+
+```bash
+python3 scripts/test_delphi_v3.py \
+  --api-key "$DELPHI_API_KEY" \
+  --mode chat \
+  --test-search \
+  --search-query "What is your background?"
 ```
 
 Enable write endpoint tests only with explicit consent:
