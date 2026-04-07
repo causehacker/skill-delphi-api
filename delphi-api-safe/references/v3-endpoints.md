@@ -22,6 +22,12 @@ This file captures endpoint behavior learned from real tests.
   - Body: `{"message": "...", "conversation_id": "..."}`
   - Known issue: some clones return `500 Internal Server Error` while others pass.
 
+- `POST /v3/conversation/{conversation_id}/append-clone-message`
+  - Inject a message into a conversation as if the clone said it
+  - Body: `{"text": "..."}`  (1-50,000 chars)
+  - Response: `message_id`, `conversation_id`, `text`, `sender`, `created_at`
+  - Use case: onboarding flows, scripted intros, seeding context
+
 ## Voice
 
 - `POST /v3/voice/stream`

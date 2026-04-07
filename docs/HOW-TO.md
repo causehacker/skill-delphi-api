@@ -108,6 +108,7 @@ make smoke-search
 - `/v3/voice/synthesize` (text-to-speech, no conversation needed)
 - `/v3/conversation/list` (requires `--user-email`)
 - `/v3/conversation/{id}/history`
+- `/v3/conversation/{id}/append-clone-message` (inject clone message)
 - `/v3/questions`
 - `/v3/users/lookup`
 - `/v3/users/{user_id}/flywheel`

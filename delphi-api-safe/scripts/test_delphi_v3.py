@@ -187,6 +187,32 @@ def test_synthesize(api_key: str) -> Dict[str, Any]:
     }
 
 
+def test_append_clone_message(api_key: str, conversation_id: str) -> Dict[str, Any]:
+    """Test appending a clone message via POST /v3/conversation/{id}/append-clone-message."""
+    a_status, a_body = http_json(
+        "POST",
+        f"/conversation/{conversation_id}/append-clone-message",
+        api_key,
+        {"text": "This is an automated test message injected via the API."},
+    )
+    has_message_id = False
+    if a_status == "200":
+        try:
+            data = json.loads(a_body)
+            has_message_id = bool(data.get("message_id"))
+        except Exception:
+            pass
+
+    a_ok = a_status == "200" and has_message_id
+    return {
+        "append_clone_message": "PASS" if a_ok else "FAIL",
+        "append_clone_message_http": a_status,
+        "has_message_id": has_message_id,
+        "note": "" if a_ok else (f"append http {a_status}" if a_status != "200" else "no message_id in response"),
+        "preview": a_body[:240],
+    }
+
+
 def test_search_query(api_key: str, query: str) -> Dict[str, Any]:
     """Test knowledge base search via POST /v3/search/query."""
     s_status, s_body = http_json(
@@ -344,6 +370,10 @@ def main() -> None:
 
     if args.mode in ("chat", "full"):
         output["chat"] = test_chat(args.api_key, args.message)
+        # Test append-clone-message if we got a conversation_id and writes are allowed
+        chat_cid = output["chat"].get("conversation_id") if "chat" in output else None
+        if chat_cid and args.allow_write:
+            output["append_clone_message"] = test_append_clone_message(args.api_key, chat_cid)
 
     # Voice tests (optional, since not all clones have voice)
     if args.test_voice:
@@ -399,6 +429,13 @@ def main() -> None:
             "overall": s.get("synthesize", "UNKNOWN"),
             "synthesize_http": s.get("synthesize_http"),
             "has_audio": s.get("has_audio"),
+        }
+
+    if "append_clone_message" in output:
+        acm = output["append_clone_message"]
+        output["append_clone_message_summary"] = {
+            "overall": acm.get("append_clone_message", "UNKNOWN"),
+            "append_clone_message_http": acm.get("append_clone_message_http"),
         }
 
     if "search_query" in output:

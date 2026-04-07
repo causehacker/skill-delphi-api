@@ -607,6 +607,18 @@ const ENDPOINTS = [
       pathFn: (g, ex) => `/v3/conversation/${ex.title_cid || "<conversation_id>"}/title`,
       bodyFn: (g, ex) => ({ title: ex.title_val || "New Title" })
     },
+    { method: "POST", path: "/v3/conversation/{conversation_id}/append-clone-message", summary: "Append clone message", desc: "Inject a message into a conversation as if the clone said it. Useful for onboarding flows, scripted intros, or seeding context. Text must be 1-50,000 characters.",
+      pathParams: [{ name: "conversation_id", desc: "Conversation UUID" }],
+      body: [
+        { name: "text", type: "string", req: true, desc: "Message text to append (1-50,000 chars)" },
+      ],
+      extra: [
+        { id: "acm_cid", placeholder: "conversation_id", label: "Conversation ID" },
+        { id: "acm_text", placeholder: "text", label: "Message Text", req: true },
+      ],
+      pathFn: (g, ex) => `/v3/conversation/${ex.acm_cid || "<conversation_id>"}/append-clone-message`,
+      bodyFn: (g, ex) => ({ text: ex.acm_text || "" })
+    },
     { method: "DELETE", path: "/v3/conversation/{conversation_id}", summary: "Delete conversation", desc: "Soft-delete a conversation (marks as hidden).",
       pathParams: [{ name: "conversation_id", desc: "Conversation UUID" }],
       extra: [{ id: "del_cid", placeholder: "conversation_id", label: "Conversation ID" }],
