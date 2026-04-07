@@ -187,6 +187,57 @@ def test_synthesize(api_key: str) -> Dict[str, Any]:
     }
 
 
+def test_search_query(api_key: str, query: str) -> Dict[str, Any]:
+    """Test knowledge base search via POST /v3/search/query."""
+    s_status, s_body = http_json(
+        "POST", "/search/query", api_key,
+        {"query": [query], "limit": 3},
+    )
+    chunks = []
+    content = []
+    if s_status == "200":
+        try:
+            data = json.loads(s_body)
+            chunks = data.get("chunks", [])
+            content = data.get("content", [])
+        except Exception:
+            pass
+
+    s_ok = s_status == "200" and isinstance(chunks, list)
+    return {
+        "search_query": "PASS" if s_ok else "FAIL",
+        "search_query_http": s_status,
+        "chunk_count": len(chunks),
+        "content_count": len(content),
+        "preview": chunks[0]["text"][:200] if chunks else "",
+        "note": "" if s_ok else (f"search/query http {s_status}" if s_status != "200" else "unexpected response format"),
+    }
+
+
+def test_search_content(api_key: str, query: str) -> Dict[str, Any]:
+    """Test content source search via POST /v3/search/content."""
+    s_status, s_body = http_json(
+        "POST", "/search/content", api_key,
+        {"query": [query]},
+    )
+    content = []
+    if s_status == "200":
+        try:
+            data = json.loads(s_body)
+            content = data.get("content", [])
+        except Exception:
+            pass
+
+    s_ok = s_status == "200" and isinstance(content, list)
+    return {
+        "search_content": "PASS" if s_ok else "FAIL",
+        "search_content_http": s_status,
+        "content_count": len(content),
+        "titles": [c.get("title", "") for c in content[:5]],
+        "note": "" if s_ok else (f"search/content http {s_status}" if s_status != "200" else "unexpected response format"),
+    }
+
+
 def test_user_endpoints(api_key: str, user_id: str, allow_write: bool, tag_name: Optional[str], info_text: Optional[str]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
 
@@ -271,7 +322,7 @@ def summarize(result: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Delphi V3 tester (clone + chat + voice + users + tags + info)")
+    ap = argparse.ArgumentParser(description="Delphi V3 tester (clone + chat + voice + search + users + tags + info)")
     ap.add_argument("--api-key", required=True)
     ap.add_argument("--account", default="Account")
     ap.add_argument("--message", default="Please answer in one short sentence to test stream.")
@@ -282,6 +333,8 @@ def main() -> None:
     ap.add_argument("--info-text", help="Text for user info create/delete test")
     ap.add_argument("--allow-write", action="store_true", help="Enable write endpoints (PATCH/POST/DELETE)")
     ap.add_argument("--test-voice", action="store_true", help="Include voice streaming test")
+    ap.add_argument("--test-search", action="store_true", help="Include knowledge base search tests")
+    ap.add_argument("--search-query", default="What is your background?", help="Query string for search tests")
     args = ap.parse_args()
 
     output: Dict[str, Any] = {"account": args.account, "mode": args.mode}
@@ -296,6 +349,11 @@ def main() -> None:
     if args.test_voice:
         output["voice"] = test_voice(args.api_key, args.message)
         output["synthesize"] = test_synthesize(args.api_key)
+
+    # Search tests (optional, requires Immortal plan)
+    if args.test_search:
+        output["search_query"] = test_search_query(args.api_key, args.search_query)
+        output["search_content"] = test_search_content(args.api_key, args.search_query)
 
     if args.mode == "full":
         lookup_tags = test_lookup_and_tags(args.api_key, args.user_email, args.allow_write, args.tag_name)
@@ -341,6 +399,22 @@ def main() -> None:
             "overall": s.get("synthesize", "UNKNOWN"),
             "synthesize_http": s.get("synthesize_http"),
             "has_audio": s.get("has_audio"),
+        }
+
+    if "search_query" in output:
+        sq = output["search_query"]
+        output["search_query_summary"] = {
+            "overall": sq.get("search_query", "UNKNOWN"),
+            "search_query_http": sq.get("search_query_http"),
+            "chunk_count": sq.get("chunk_count"),
+        }
+
+    if "search_content" in output:
+        sc = output["search_content"]
+        output["search_content_summary"] = {
+            "overall": sc.get("search_content", "UNKNOWN"),
+            "search_content_http": sc.get("search_content_http"),
+            "content_count": sc.get("content_count"),
         }
 
     if "lookup_tags" in output:

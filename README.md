@@ -16,7 +16,7 @@ This repo contains:
 
 ## What this skill does
 
-- Runs safe Delphi V3 checks for conversation, stream, users, tags, and user info endpoints
+- Runs safe Delphi V3 checks for conversation, stream, search, users, tags, and user info endpoints
 - Handles self-discovery first, then asks for missing required inputs
 - Never invents sensitive/user-specific values (emails, API keys)
 - Produces pass/fail matrices and incident-ready reports
@@ -61,6 +61,12 @@ For full endpoint checks:
 make smoke-full
 ```
 
+For knowledge base search tests (Immortal plan):
+
+```bash
+make smoke-search
+```
+
 
 Chat flow test:
 
@@ -92,9 +98,19 @@ python3 delphi-api-safe/scripts/test_delphi_v3.py \
   --info-text "safe test note"
 ```
 
+Knowledge base search test (Immortal plan):
+
+```bash
+python3 delphi-api-safe/scripts/test_delphi_v3.py \
+  --api-key "$DELPHI_API_KEY" \
+  --mode chat \
+  --test-search \
+  --search-query "What is your background?"
+```
+
 ## Interactive API Reference (browser)
 
-A single-page interactive explorer for all 23 V3 endpoints with a live test harness, streaming SSE support, and curl copy/paste.
+A single-page interactive explorer for all 25 V3 endpoints with a live test harness, streaming SSE support, and curl copy/paste.
 
 ### Quick start
 
@@ -112,7 +128,7 @@ python3 docs/serve.py --port 9000  # custom port
 
 ### What it does
 
-- **24 endpoint cards** organized by section (Conversations, Questions, Users, Tags, User Info, Clone, Voice)
+- **24 endpoint cards** organized by section (Conversations, Questions, Users, Tags, User Info, Search, Clone, Voice)
 - **Send button** fires requests through a local CORS proxy — responses render inline
 - **SSE streaming** for `/v3/stream` — tokens appear live with a blinking cursor, token counter, and raw SSE toggle
 - **Curl copy** on every endpoint — one click to clipboard, ready to paste in terminal

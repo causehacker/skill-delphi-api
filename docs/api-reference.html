@@ -496,7 +496,7 @@
 <!-- ── Main ── -->
 <div class="main">
   <h1>Delphi V3 API Reference</h1>
-  <p class="subtitle">Interactive endpoint explorer &mdash; 23 endpoints, zero dependencies. Fill in your API key above to enable live testing.</p>
+  <p class="subtitle">Interactive endpoint explorer &mdash; 25 endpoints, zero dependencies. Fill in your API key above to enable live testing.</p>
   <div id="modeBanner"></div>
   <div id="endpoints"></div>
 </div>
@@ -753,6 +753,44 @@ const ENDPOINTS = [
       pathParams: [{ name: "user_id", desc: "User UUID" }, { name: "info_id", desc: "Info item UUID" }],
       extra: [{ id: "di_uid", placeholder: "user_id", label: "User ID" }, { id: "di_iid", placeholder: "info_id", label: "Info ID" }],
       pathFn: (g, ex) => `/v3/users/${ex.di_uid || "<user_id>"}/info/${ex.di_iid || "<info_id>"}`
+    },
+  ]},
+  { section: "Search", endpoints: [
+    { method: "POST", path: "/v3/search/query", summary: "Search knowledge base", desc: "Semantic + keyword search across the clone's knowledge base. Returns matching passages (chunks) with source attribution. Supports content scoping by description or ID.",
+      body: [
+        { name: "query", type: "string[]", req: true, desc: "Semantic search strings (questions or topics)" },
+        { name: "keywords", type: "string[]", req: false, desc: "Keyword/phrase strings for exact-match (BM25) boosting" },
+        { name: "content", type: "string[]", req: false, desc: "Content descriptions to scope results to matching sources" },
+        { name: "contentIds", type: "string[]", req: false, desc: "Direct content IDs to filter results" },
+        { name: "limit", type: "integer", req: false, desc: "Max chunks to return (1-50, default 10)" },
+        { name: "tag", type: "string", req: false, desc: "Access tier tag (e.g. PUBLIC, PREMIUM)" },
+      ],
+      extra: [
+        { id: "sq_query", placeholder: "What is your advice on...?", label: "Query" },
+        { id: "sq_keywords", placeholder: "fundraising, Series A", label: "Keywords (comma-sep)", req: false },
+        { id: "sq_content", placeholder: "podcast about startups", label: "Content scope (comma-sep)", req: false },
+        { id: "sq_limit", placeholder: "10", label: "Limit", type: "integer", req: false },
+      ],
+      bodyFn: (g, ex) => {
+        const b = { query: [(ex.sq_query || "What is your advice?")] };
+        if (ex.sq_keywords) b.keywords = ex.sq_keywords.split(",").map(s => s.trim()).filter(Boolean);
+        if (ex.sq_content) b.content = ex.sq_content.split(",").map(s => s.trim()).filter(Boolean);
+        if (ex.sq_limit) b.limit = parseInt(ex.sq_limit, 10) || 10;
+        return b;
+      }
+    },
+    { method: "POST", path: "/v3/search/content", summary: "Search content sources", desc: "Search for content sources (documents, articles, podcasts, etc.) by title or description. Use this to discover available content before performing a chunk search.",
+      body: [
+        { name: "query", type: "string[]", req: true, desc: "Content search strings (titles, descriptions, topics)" },
+        { name: "tag", type: "string", req: false, desc: "Access tier tag (e.g. PUBLIC, PREMIUM)" },
+      ],
+      extra: [
+        { id: "sc_query", placeholder: "fundraising, startup advice", label: "Query (comma-sep)" },
+      ],
+      bodyFn: (g, ex) => {
+        const q = (ex.sc_query || "").split(",").map(s => s.trim()).filter(Boolean);
+        return { query: q.length ? q : ["general"] };
+      }
     },
   ]},
   { section: "Clone", endpoints: [

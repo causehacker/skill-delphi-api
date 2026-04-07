@@ -16,6 +16,7 @@ def main():
     ap = argparse.ArgumentParser(description="Run Delphi smoke tests from a simple JSON config")
     ap.add_argument("--config", default="smoke-config.json")
     ap.add_argument("--mode", choices=["chat", "full"], default="chat")
+    ap.add_argument("--search", action="store_true", help="Force search tests on (overrides config)")
     args = ap.parse_args()
 
     if not os.path.exists(args.config):
@@ -43,6 +44,11 @@ def main():
         "--mode",
         args.mode,
     ]
+
+    # Search tests (Immortal plan feature)
+    if args.search or cfg.get("test_search", False):
+        search_query = cfg.get("search_query", "What is your background?").strip()
+        cmd += ["--test-search", "--search-query", search_query]
 
     if args.mode == "full":
         user_email = cfg.get("user_email", "").strip()

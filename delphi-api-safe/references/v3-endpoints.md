@@ -82,6 +82,40 @@ Common `info_type` values observed working:
 Common `source` values observed working:
 - `MESSAGE`, `MANUAL`, `INFERENCE`, `API`
 
+## Search
+
+- `POST /v3/search/query`
+  - Semantic + keyword search across clone's knowledge base
+  - Body fields:
+    - `query` (string[], required): Semantic search strings (questions or topics)
+    - `keywords` (string[], optional): Keyword/phrase strings for exact-match (BM25) boosting
+    - `content` (string[], optional): Content descriptions to scope results to matching sources
+    - `contentIds` (string[], optional): Direct content IDs to filter results to specific sources
+    - `limit` (number, optional): Max chunks to return (1–50, default 10)
+    - `tag` (string, optional): Access tier tag (e.g. `PUBLIC`, `PREMIUM`). Defaults to broadest access.
+  - How search works: `query` strings are used for semantic (meaning-based) search. `keywords` are routed through hybrid search for better exact-phrase matching via BM25. When both are provided, results are merged and deduplicated, keeping the highest-scoring passages.
+  - Content scoping: Use `content` to describe the sources you want to search within (e.g. `["Series A fundraising podcast"]`). The API resolves these descriptions to matching content and restricts the chunk search to those sources. Alternatively, pass `contentIds` directly if you already know the content IDs.
+  - Response: `{ "chunks": [...], "content": [...] }`
+    - `chunks[].text`: The passage text
+    - `chunks[].sources[]`: `{ contentId, title }` — content sources this passage belongs to
+    - `chunks[].createdTime`, `chunks[].editedTime`: Timestamps
+    - `content[]`: Deduplicated list of all content sources referenced by the chunks
+    - `content[].contentId`, `content[].title`, `content[].contentType`, `content[].summary`, `content[].metaData`, `content[].createdTime`, `content[].editedTime`
+
+- `POST /v3/search/content`
+  - Search for content sources (documents, articles, podcasts, etc.) by title or description
+  - Use this to discover available content before performing a chunk search with `/v3/search/query`
+  - Body fields:
+    - `query` (string[], required): Content search strings (titles, descriptions, topics)
+    - `tag` (string, optional): Access tier tag (e.g. `PUBLIC`, `PREMIUM`). Defaults to broadest access.
+  - Response: `{ "content": [...] }`
+    - `content[].contentId`: Unique identifier
+    - `content[].title`: Title of the content
+    - `content[].contentType`: Type (e.g. `podcast`, `article`, `pdf`, `video`)
+    - `content[].summary`: Brief summary (may be null)
+    - `content[].metaData`: Additional metadata (varies by content type)
+    - `content[].createdTime`, `content[].editedTime`: Timestamps
+
 ## Common error codes
 
 | HTTP | Meaning | Typical cause |

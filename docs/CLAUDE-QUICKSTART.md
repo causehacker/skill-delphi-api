@@ -31,7 +31,17 @@ API key: <paste key>
 Output: plain English + table.
 ```
 
-## Step 4) If you want a full endpoint sweep
+## Step 4) If you want to search the knowledge base
+
+Tell Claude:
+
+```text
+Goal: search my clone's knowledge base.
+API key: <paste key>
+Search for: fundraising advice
+```
+
+## Step 5) If you want a full endpoint sweep
 
 Tell Claude:
 
@@ -62,6 +72,12 @@ For full checks:
 
 ```bash
 make smoke-full
+```
+
+For knowledge base search:
+
+```bash
+make smoke-search
 ```
 
 ## Important safety notes
