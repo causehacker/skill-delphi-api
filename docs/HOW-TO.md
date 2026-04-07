@@ -84,6 +84,22 @@ python3 delphi-api-safe/scripts/test_delphi_v3.py \
   --info-text "safe test note"
 ```
 
+### Knowledge base search (Immortal plan)
+
+```bash
+python3 delphi-api-safe/scripts/test_delphi_v3.py \
+  --api-key "$DELPHI_API_KEY" \
+  --mode chat \
+  --test-search \
+  --search-query "What is your background?"
+```
+
+Or via make:
+
+```bash
+make smoke-search
+```
+
 ## Endpoint coverage in full mode
 
 - `/v3/conversation`, `/v3/stream`
@@ -98,6 +114,8 @@ python3 delphi-api-safe/scripts/test_delphi_v3.py \
 - `/v3/users/{user_id}/tier`
 - `/v3/users/{user_id}/usage`
 - `/v3/tags`
+- `/v3/search/query` (semantic + keyword knowledge base search, Immortal plan)
+- `/v3/search/content` (content source discovery, Immortal plan)
 - plus write endpoints when `--allow-write` is provided:
   - `PUT /v3/conversation/{id}/title`
   - `DELETE /v3/conversation/{id}`
@@ -111,5 +129,6 @@ python3 delphi-api-safe/scripts/test_delphi_v3.py \
 ## PASS/FAIL criteria
 
 - PASS (chat): conversation 200 and stream SSE contains `data:` + `[DONE]`
+- PASS (search): HTTP 200 and response contains valid `chunks` / `content` arrays
 - PASS (endpoint checks): endpoint HTTP 200
 - FAIL: non-200, malformed payloads, missing stream completion markers
