@@ -647,12 +647,38 @@ const ENDPOINTS = [
     },
   ]},
   { section: "Users", endpoints: [
-    { method: "POST", path: "/v3/users/lookup", summary: "Lookup user by email", desc: "Resolve an email address to a user_id. May auto-create for whitelisted keys.",
-      body: [{ name: "email", type: "string", req: true, desc: "User email" }],
+    { method: "GET", path: "/v3/users", summary: "List all users", desc: "Paginated list of all users in your audience. Pass <code>cursor</code> from previous response to page through results.",
+      query: [
+        { name: "limit", type: "integer", req: false, desc: "Page size 1-1000 (default 50)" },
+        { name: "cursor", type: "string", req: false, desc: "Cursor from previous next_cursor" },
+        { name: "active", type: "boolean", req: false, desc: "Filter: true=active, false=revoked" },
+      ],
+      extra: [
+        { id: "lu_limit", placeholder: "limit", label: "Limit", type: "integer", req: false },
+        { id: "lu_cursor", placeholder: "cursor", label: "Cursor", req: false },
+        { id: "lu_active", placeholder: "active", label: "Active", type: "select", options: ["", "true", "false"], req: false },
+      ],
+      queryFn: (g, ex) => {
+        const parts = [];
+        if (ex && ex.lu_limit) parts.push("limit=" + ex.lu_limit);
+        if (ex && ex.lu_cursor) parts.push("cursor=" + encodeURIComponent(ex.lu_cursor));
+        if (ex && ex.lu_active) parts.push("active=" + ex.lu_active);
+        return parts.length ? "?" + parts.join("&") : "";
+      }
+    },
+    { method: "POST", path: "/v3/users/lookup", summary: "Lookup user", desc: "Find a user by email or phone number. Returns the user's ID, email, and phone if they exist. Exactly one of <code>email</code> or <code>phone_number</code> must be provided.",
+      body: [
+        { name: "email", type: "string", req: false, desc: "Email address to look up" },
+        { name: "phone_number", type: "string", req: false, desc: "Phone in E.164 format" },
+      ],
       extra: [
         { id: "lookup_email", placeholder: "email", label: "Email", global: "userEmail" },
+        { id: "lookup_phone", placeholder: "phone_number", label: "Phone (E.164)", req: false },
       ],
-      bodyFn: (g, ex) => ({ email: (ex && ex.lookup_email) || g.userEmail || "<user-email>" })
+      bodyFn: (g, ex) => {
+        if (ex && ex.lookup_phone) return { phone_number: ex.lookup_phone };
+        return { email: (ex && ex.lookup_email) || g.userEmail || "<user-email>" };
+      }
     },
     { method: "GET", path: "/v3/users/{user_id}/flywheel", summary: "Get user flywheel data", desc: "Complete user profile as shown in the admin audience tab.",
       pathParams: [{ name: "user_id", desc: "User UUID" }],

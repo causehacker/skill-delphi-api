@@ -64,7 +64,7 @@ def test_clone(api_key: str) -> Dict[str, Any]:
                 "clone": "PASS",
                 "clone_http": c_status,
                 "clone_name": data.get("name", "Unknown"),
-                "clone_data": {k: data.get(k, "") for k in ("name", "description", "headline", "purpose")},
+                "clone_data": {k: data.get(k, "") for k in ("name", "slug", "description", "headline", "purpose", "initial_message")},
             }
         except Exception:
             return {
@@ -213,6 +213,131 @@ def test_append_clone_message(api_key: str, conversation_id: str) -> Dict[str, A
     }
 
 
+def test_list_conversations(api_key: str, user_email: str) -> Dict[str, Any]:
+    """Test listing conversations via GET /v3/conversation/list?email=..."""
+    from urllib.parse import quote
+    st, body = http_json("GET", f"/conversation/list?email={quote(user_email)}", api_key)
+    conversations = []
+    if st == "200":
+        try:
+            data = json.loads(body)
+            conversations = data.get("conversations", [])
+        except Exception:
+            pass
+
+    ok = st == "200" and isinstance(conversations, list)
+    return {
+        "list_conversations": "PASS" if ok else "FAIL",
+        "list_conversations_http": st,
+        "conversation_count": len(conversations),
+        "preview": [{"id": c.get("id", ""), "title": c.get("title", "")} for c in conversations[:3]],
+        "note": "" if ok else (f"list conversations http {st}" if st != "200" else "unexpected response format"),
+    }
+
+
+def test_conversation_history(api_key: str, conversation_id: str) -> Dict[str, Any]:
+    """Test getting conversation history via GET /v3/conversation/{id}/history."""
+    st, body = http_json("GET", f"/conversation/{conversation_id}/history?include_citations=true", api_key)
+    messages = []
+    if st == "200":
+        try:
+            data = json.loads(body)
+            messages = data.get("messages", [])
+        except Exception:
+            pass
+
+    ok = st == "200" and isinstance(messages, list) and len(messages) > 0
+    return {
+        "conversation_history": "PASS" if ok else "FAIL",
+        "conversation_history_http": st,
+        "message_count": len(messages),
+        "senders": list(set(m.get("sender", "") for m in messages)),
+        "note": "" if ok else (f"history http {st}" if st != "200" else "no messages in response"),
+    }
+
+
+def test_update_conversation_title(api_key: str, conversation_id: str) -> Dict[str, Any]:
+    """Test updating conversation title via PUT /v3/conversation/{id}/title."""
+    st, body = http_json(
+        "PUT",
+        f"/conversation/{conversation_id}/title",
+        api_key,
+        {"title": "API Test Conversation"},
+    )
+    has_title = False
+    if st == "200":
+        try:
+            data = json.loads(body)
+            has_title = bool(data.get("title"))
+        except Exception:
+            pass
+
+    ok = st == "200" and has_title
+    return {
+        "update_title": "PASS" if ok else "FAIL",
+        "update_title_http": st,
+        "note": "" if ok else (f"update title http {st}" if st != "200" else "no title in response"),
+        "preview": body[:180],
+    }
+
+
+def test_delete_conversation(api_key: str, conversation_id: str) -> Dict[str, Any]:
+    """Test soft-deleting a conversation via DELETE /v3/conversation/{id}."""
+    st, body = http_json("DELETE", f"/conversation/{conversation_id}", api_key)
+    ok = st == "200"
+    return {
+        "delete_conversation": "PASS" if ok else "FAIL",
+        "delete_conversation_http": st,
+        "note": "" if ok else f"delete conversation http {st}",
+        "preview": body[:180],
+    }
+
+
+def test_questions(api_key: str) -> Dict[str, Any]:
+    """Test getting suggested questions via GET /v3/questions."""
+    st, body = http_json("GET", "/questions?type=all&count=5", api_key)
+    questions = []
+    if st == "200":
+        try:
+            data = json.loads(body)
+            questions = data.get("questions", [])
+        except Exception:
+            pass
+
+    ok = st == "200" and isinstance(questions, list)
+    return {
+        "questions": "PASS" if ok else "FAIL",
+        "questions_http": st,
+        "question_count": len(questions),
+        "sample": [q.get("question", "")[:80] for q in questions[:3]],
+        "note": "" if ok else (f"questions http {st}" if st != "200" else "unexpected response format"),
+    }
+
+
+def test_list_users(api_key: str) -> Dict[str, Any]:
+    """Test paginated user list via GET /v3/users."""
+    st, body = http_json("GET", "/users?limit=5", api_key)
+    users = []
+    has_more = False
+    if st == "200":
+        try:
+            data = json.loads(body)
+            users = data.get("users", [])
+            has_more = data.get("has_more", False)
+        except Exception:
+            pass
+
+    ok = st == "200" and isinstance(users, list)
+    return {
+        "list_users": "PASS" if ok else "FAIL",
+        "list_users_http": st,
+        "user_count": len(users),
+        "has_more": has_more,
+        "sample": [{"id": u.get("user_id", ""), "email": u.get("email", "")} for u in users[:3]],
+        "note": "" if ok else (f"list users http {st}" if st != "200" else "unexpected response format"),
+    }
+
+
 def test_search_query(api_key: str, query: str) -> Dict[str, Any]:
     """Test knowledge base search via POST /v3/search/query."""
     s_status, s_body = http_json(
@@ -298,7 +423,7 @@ def test_user_endpoints(api_key: str, user_id: str, allow_write: bool, tag_name:
                 "POST",
                 f"/users/{user_id}/info",
                 api_key,
-                {"text": info_text, "source": "API", "info_type": "JOURNAL"},
+                {"info": info_text, "info_type": "JOURNAL"},
             )
             info_id = None
             if st == "200":
@@ -348,16 +473,16 @@ def summarize(result: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Delphi V3 tester (clone + chat + voice + search + users + tags + info)")
+    ap = argparse.ArgumentParser(description="Delphi V3 tester (clone + chat + voice + search + users + tags + info + conversations + questions)")
     ap.add_argument("--api-key", required=True)
     ap.add_argument("--account", default="Account")
     ap.add_argument("--message", default="Please answer in one short sentence to test stream.")
     ap.add_argument("--mode", choices=["chat", "full"], default="chat")
-    ap.add_argument("--user-email", help="Required for /users/lookup")
+    ap.add_argument("--user-email", help="Required for /users/lookup and /conversation/list")
     ap.add_argument("--user-id", help="Optional user_id. If omitted, derived from lookup when user_email is provided")
     ap.add_argument("--tag-name", help="Tag name for tag/untag tests (required for write tag tests)")
     ap.add_argument("--info-text", help="Text for user info create/delete test")
-    ap.add_argument("--allow-write", action="store_true", help="Enable write endpoints (PATCH/POST/DELETE)")
+    ap.add_argument("--allow-write", action="store_true", help="Enable write endpoints (PUT/PATCH/POST/DELETE)")
     ap.add_argument("--test-voice", action="store_true", help="Include voice streaming test")
     ap.add_argument("--test-search", action="store_true", help="Include knowledge base search tests")
     ap.add_argument("--search-query", default="What is your background?", help="Query string for search tests")
@@ -368,12 +493,30 @@ def main() -> None:
     # Always discover clone identity first
     output["clone"] = test_clone(args.api_key)
 
+    # Always test questions (read-only, available to all clones)
+    output["questions"] = test_questions(args.api_key)
+
+    # Always test list users (read-only)
+    output["list_users"] = test_list_users(args.api_key)
+
     if args.mode in ("chat", "full"):
         output["chat"] = test_chat(args.api_key, args.message)
-        # Test append-clone-message if we got a conversation_id and writes are allowed
         chat_cid = output["chat"].get("conversation_id") if "chat" in output else None
+
+        # Test conversation history if we got a conversation_id
+        if chat_cid:
+            output["conversation_history"] = test_conversation_history(args.api_key, chat_cid)
+
+        # Test conversation list if we have a user email
+        if args.user_email:
+            output["list_conversations"] = test_list_conversations(args.api_key, args.user_email)
+
+        # Write-dependent conversation tests
         if chat_cid and args.allow_write:
             output["append_clone_message"] = test_append_clone_message(args.api_key, chat_cid)
+            output["update_title"] = test_update_conversation_title(args.api_key, chat_cid)
+            # Delete conversation last (soft-delete)
+            output["delete_conversation"] = test_delete_conversation(args.api_key, chat_cid)
 
     # Voice tests (optional, since not all clones have voice)
     if args.test_voice:
@@ -436,6 +579,53 @@ def main() -> None:
         output["append_clone_message_summary"] = {
             "overall": acm.get("append_clone_message", "UNKNOWN"),
             "append_clone_message_http": acm.get("append_clone_message_http"),
+        }
+
+    if "questions" in output:
+        q = output["questions"]
+        output["questions_summary"] = {
+            "overall": q.get("questions", "UNKNOWN"),
+            "questions_http": q.get("questions_http"),
+            "question_count": q.get("question_count"),
+        }
+
+    if "list_users" in output:
+        lu = output["list_users"]
+        output["list_users_summary"] = {
+            "overall": lu.get("list_users", "UNKNOWN"),
+            "list_users_http": lu.get("list_users_http"),
+            "user_count": lu.get("user_count"),
+            "has_more": lu.get("has_more"),
+        }
+
+    if "list_conversations" in output:
+        lc = output["list_conversations"]
+        output["list_conversations_summary"] = {
+            "overall": lc.get("list_conversations", "UNKNOWN"),
+            "list_conversations_http": lc.get("list_conversations_http"),
+            "conversation_count": lc.get("conversation_count"),
+        }
+
+    if "conversation_history" in output:
+        ch = output["conversation_history"]
+        output["conversation_history_summary"] = {
+            "overall": ch.get("conversation_history", "UNKNOWN"),
+            "conversation_history_http": ch.get("conversation_history_http"),
+            "message_count": ch.get("message_count"),
+        }
+
+    if "update_title" in output:
+        ut = output["update_title"]
+        output["update_title_summary"] = {
+            "overall": ut.get("update_title", "UNKNOWN"),
+            "update_title_http": ut.get("update_title_http"),
+        }
+
+    if "delete_conversation" in output:
+        dc = output["delete_conversation"]
+        output["delete_conversation_summary"] = {
+            "overall": dc.get("delete_conversation", "UNKNOWN"),
+            "delete_conversation_http": dc.get("delete_conversation_http"),
         }
 
     if "search_query" in output:

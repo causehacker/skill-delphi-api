@@ -40,6 +40,26 @@
       "id": 8,
       "prompt": "what content sources does my clone have? dsk-contentList42",
       "expected_output": "Should use POST /v3/search/content to discover available content sources, list titles and types, redact key"
+    },
+    {
+      "id": 9,
+      "prompt": "show me all conversations for user@example.com on my clone. key: dsk-convList77",
+      "expected_output": "Should use GET /v3/conversation/list?email=user@example.com, list conversation titles and dates, redact key as dsk-****t77"
+    },
+    {
+      "id": 10,
+      "prompt": "get the chat history for conversation a1b2c3d4 with citations. key: dsk-historyTest55",
+      "expected_output": "Should use GET /v3/conversation/{id}/history?include_citations=true, display messages with sender labels and any citation URLs, redact key"
+    },
+    {
+      "id": 11,
+      "prompt": "what suggested questions does my clone have? key: dsk-questionsABC",
+      "expected_output": "Should use GET /v3/questions?type=all, list question text with pinned/unpinned status, redact key"
+    },
+    {
+      "id": 12,
+      "prompt": "list all users in my audience. key: dsk-audienceList99",
+      "expected_output": "Should use GET /v3/users with pagination, show user emails/names/tiers/tags, redact key as dsk-****t99"
     }
   ]
 }

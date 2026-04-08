@@ -9,28 +9,42 @@ Run Delphi V3 API tests in a non-destructive, user-safe way. Prefer reproducible
 
 ## Core rules
 
-- Use **V3 endpoints only**. Supported/tested coverage includes:
-  - `GET /v3/clone` — clone profile and identity discovery
-  - `POST /v3/conversation` — create a conversation
-  - `POST /v3/stream` — SSE text streaming
-  - `POST /v3/voice/stream` — binary PCM audio streaming (24kHz, 16-bit, mono)
-  - `POST /v3/voice/synthesize` — text-to-speech (batch base64 or streaming PCM)
-  - `POST /v3/users/lookup`
-  - `GET /v3/users/{user_id}/flywheel`
-  - `GET /v3/users/{user_id}/tier`
-  - `GET /v3/users/{user_id}/usage`
-  - `PATCH /v3/users/{user_id}`
-  - `POST /v3/users/{user_id}/revoke`
-  - `POST /v3/users/{user_id}/activate`
-  - `GET /v3/tags`
-  - `POST /v3/tags`
-  - `POST /v3/users/{user_id}/tags/{tag_name}`
-  - `DELETE /v3/users/{user_id}/tags/{tag_name}`
-  - `GET /v3/users/{user_id}/info`
-  - `POST /v3/users/{user_id}/info`
-  - `DELETE /v3/users/{user_id}/info/{info_id}`
-  - `POST /v3/search/query` — semantic + keyword search across clone's knowledge base
-  - `POST /v3/search/content` — search content sources by title or description
+- Use **V3 endpoints only**. Rate limit: 120 requests per 60 seconds per key.
+  Supported/tested coverage includes:
+  - **Clone**: `GET /v3/clone` — clone profile and identity discovery
+  - **Conversations**:
+    - `POST /v3/conversation` — create a conversation
+    - `POST /v3/stream` — SSE text streaming (supports `file_urls`, `slug`)
+    - `GET /v3/conversation/list?email=...` — list conversations for a user
+    - `GET /v3/conversation/{id}/history` — message history with optional citations
+    - `PUT /v3/conversation/{id}/title` — update conversation title
+    - `POST /v3/conversation/{id}/append-clone-message` — inject clone message
+    - `DELETE /v3/conversation/{id}` — soft-delete conversation
+  - **Questions**: `GET /v3/questions` — suggested questions (pinned/unpinned/all)
+  - **Voice**:
+    - `POST /v3/voice/stream` — binary PCM audio streaming (24kHz, 16-bit, mono)
+    - `POST /v3/voice/synthesize` — text-to-speech (batch base64 or streaming PCM)
+  - **Audience (Users)**:
+    - `GET /v3/users` — paginated user list (cursor, active filter)
+    - `POST /v3/users/lookup` — lookup by email or phone_number
+    - `GET /v3/users/{user_id}/tier`
+    - `GET /v3/users/{user_id}/usage`
+    - `GET /v3/users/{user_id}/flywheel`
+    - `PATCH /v3/users/{user_id}`
+    - `POST /v3/users/{user_id}/revoke`
+    - `POST /v3/users/{user_id}/activate`
+  - **Tags**:
+    - `GET /v3/tags`
+    - `POST /v3/tags` (with optional `color`)
+    - `POST /v3/users/{user_id}/tags/{tag_name}`
+    - `DELETE /v3/users/{user_id}/tags/{tag_name}`
+  - **User Info**:
+    - `GET /v3/users/{user_id}/info`
+    - `POST /v3/users/{user_id}/info`
+    - `DELETE /v3/users/{user_id}/info/{info_id}`
+  - **Search**:
+    - `POST /v3/search/query` — semantic + keyword search across clone's knowledge base
+    - `POST /v3/search/content` — search content sources by title or description
 - See `references/v3-endpoints.md` for request/response expectations and known quirks.
 - Never invent user data (emails, API keys, clone names, webhook URLs). Users often share test output with teammates or paste it into tickets — invented data causes confusion and erodes trust.
 - If a required field is missing, ask a direct question before proceeding.
@@ -119,6 +133,34 @@ curl -i -N -X POST "https://api.delphi.ai/v3/stream" \
   -H "x-api-key: $DELPHI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"message":"<prompt>","conversation_id":"<cid>"}'
+```
+
+### List conversations
+
+```bash
+curl -sS "https://api.delphi.ai/v3/conversation/list?email=user@example.com" \
+  -H "x-api-key: $DELPHI_API_KEY"
+```
+
+### Get conversation history
+
+```bash
+curl -sS "https://api.delphi.ai/v3/conversation/<cid>/history?include_citations=true" \
+  -H "x-api-key: $DELPHI_API_KEY"
+```
+
+### Get suggested questions
+
+```bash
+curl -sS "https://api.delphi.ai/v3/questions?type=pinned&count=5" \
+  -H "x-api-key: $DELPHI_API_KEY"
+```
+
+### List users (paginated)
+
+```bash
+curl -sS "https://api.delphi.ai/v3/users?limit=20" \
+  -H "x-api-key: $DELPHI_API_KEY"
 ```
 
 ### One-liner test
