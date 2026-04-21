@@ -125,7 +125,8 @@ make smoke-search
   - `POST /v3/users/{user_id}/activate`
   - `POST /v3/tags`
   - `POST/DELETE /v3/users/{user_id}/tags/{tag_name}`
-  - `POST/DELETE /v3/users/{user_id}/info...`
+  - `POST/PATCH/DELETE /v3/users/{user_id}/info...`
+  - `GET /v3/users` (paginated user list)
 
 ## PASS/FAIL criteria
 

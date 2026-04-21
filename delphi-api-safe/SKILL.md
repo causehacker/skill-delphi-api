@@ -41,6 +41,7 @@ Run Delphi V3 API tests in a non-destructive, user-safe way. Prefer reproducible
   - **User Info**:
     - `GET /v3/users/{user_id}/info`
     - `POST /v3/users/{user_id}/info`
+    - `PATCH /v3/users/{user_id}/info/{info_id}` — update existing info item
     - `DELETE /v3/users/{user_id}/info/{info_id}`
   - **Search**:
     - `POST /v3/search/query` — semantic + keyword search across clone's knowledge base

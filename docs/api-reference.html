@@ -787,6 +787,26 @@ const ENDPOINTS = [
       pathFn: (g, ex) => `/v3/users/${ex.ci_uid || "<user_id>"}/info`,
       bodyFn: (g, ex) => ({ info: ex.ci_text || "Test info", info_type: ex.ci_type || "JOURNAL", source: ex.ci_source || "API" })
     },
+    { method: "PATCH", path: "/v3/users/{user_id}/info/{info_id}", summary: "Update user info", desc: "Update an existing info item's text or type. At least one of info or info_type must be provided.",
+      pathParams: [{ name: "user_id", desc: "User UUID" }, { name: "info_id", desc: "Info item UUID" }],
+      body: [
+        { name: "info", type: "string", req: false, desc: "Updated information text" },
+        { name: "info_type", type: "string", req: false, desc: "Updated category (same options as create)" },
+      ],
+      extra: [
+        { id: "ui_uid", placeholder: "user_id", label: "User ID" },
+        { id: "ui_iid", placeholder: "info_id", label: "Info ID" },
+        { id: "ui_text", placeholder: "info", label: "New Info Text", req: false },
+        { id: "ui_type", placeholder: "info_type", label: "New Info Type", type: "select", options: ["", "JOURNAL", "GOAL", "PREFERENCES", "INTERESTS", "PERSONAL_INFO", "EXPERTISE", "SITUATION", "BELIEF", "COMMUNICATION_STYLE", "EMOTIONAL_STATE", "RELATIONSHIP", "WHY_DELPHI", "HOW_DELPHI"], req: false },
+      ],
+      pathFn: (g, ex) => `/v3/users/${ex.ui_uid || "<user_id>"}/info/${ex.ui_iid || "<info_id>"}`,
+      bodyFn: (g, ex) => {
+        const b = {};
+        if (ex.ui_text) b.info = ex.ui_text;
+        if (ex.ui_type) b.info_type = ex.ui_type;
+        return b;
+      }
+    },
     { method: "DELETE", path: "/v3/users/{user_id}/info/{info_id}", summary: "Delete user info", desc: "Remove a specific info item by ID.",
       pathParams: [{ name: "user_id", desc: "User UUID" }, { name: "info_id", desc: "Info item UUID" }],
       extra: [{ id: "di_uid", placeholder: "user_id", label: "User ID" }, { id: "di_iid", placeholder: "info_id", label: "Info ID" }],

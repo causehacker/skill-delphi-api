@@ -113,6 +113,12 @@ Rate limits: 120 requests per 60 seconds per API key. Exceeding returns `429`.
   - Body: `{"info": "...", "info_type": "..."}`
   - Response: `{ "id", "text", "created_at", "updated_at", "message_id", "source", "info_type" }`
 
+- `PATCH /v3/users/{user_id}/info/{info_id}`
+  - Update an existing info item's text or type
+  - Body: `{"info": "...", "info_type": "..."}` (at least one required)
+  - Preserves original `created_at`
+  - Response: `{ "id", "text", "created_at", "updated_at", "message_id", "source", "info_type" }`
+
 - `DELETE /v3/users/{user_id}/info/{info_id}`
   - Response: `{ "success": true, "message": "...", "deleted_info_id": "..." }`
 

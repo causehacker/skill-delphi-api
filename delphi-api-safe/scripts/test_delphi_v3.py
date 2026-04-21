@@ -433,6 +433,15 @@ def test_user_endpoints(api_key: str, user_id: str, allow_write: bool, tag_name:
                     info_id = None
             out["info_create"] = {"http": st, "pass": st == "200", "preview": body[:180], "info_id": info_id}
             if info_id:
+                # Test PATCH update
+                pst, pbody = http_json(
+                    "PATCH",
+                    f"/users/{user_id}/info/{info_id}",
+                    api_key,
+                    {"info": info_text + " (updated)", "info_type": "GOAL"},
+                )
+                out["info_update"] = {"http": pst, "pass": pst == "200", "preview": pbody[:180]}
+
                 dst, dbody = http_json("DELETE", f"/users/{user_id}/info/{info_id}", api_key)
                 out["info_delete"] = {"http": dst, "pass": dst == "200", "preview": dbody[:180]}
 
@@ -451,6 +460,17 @@ def test_lookup_and_tags(api_key: str, user_email: Optional[str], allow_write: b
                 user_id = json.loads(body).get("user_id")
             except Exception:
                 user_id = None
+
+    # List users (paginated)
+    st, body = http_json("GET", "/users?limit=5", api_key)
+    users_ok = st == "200"
+    if users_ok:
+        try:
+            data = json.loads(body)
+            users_ok = "users" in data and isinstance(data["users"], list)
+        except Exception:
+            users_ok = False
+    out["users_list"] = {"http": st, "pass": users_ok, "preview": body[:180]}
 
     st, body = http_json("GET", "/tags", api_key)
     out["tags_get"] = {"http": st, "pass": st == "200", "preview": body[:180]}
