@@ -47,6 +47,7 @@ Run Delphi V3 API tests in a non-destructive, user-safe way. Prefer reproducible
     - `POST /v3/search/query` — semantic + keyword search across clone's knowledge base
     - `POST /v3/search/content` — search content sources by title or description
 - See `references/v3-endpoints.md` for request/response expectations and known quirks.
+- See `references/manus-runtime.md` for Manus-specific operational notes (shell timing, context-token hygiene, SSE parsing, voice byte math, demo-vs-test-script selection). Read it before running any bundled script inside a Manus task.
 - Never invent user data (emails, API keys, clone names, webhook URLs). Users often share test output with teammates or paste it into tickets — invented data causes confusion and erodes trust.
 - If a required field is missing, ask a direct question before proceeding.
 - Treat API keys as sensitive secrets. Redact keys in user-visible output (e.g., `dsk-****WmQ`) or use `$DELPHI_API_KEY`. Users frequently share screens or copy chat logs, so a leaked key can be exploited within minutes. Don't echo raw keys back, even if the user provided them — the output may end up somewhere the user didn't intend.
@@ -213,12 +214,27 @@ curl -sS -X POST "https://api.delphi.ai/v3/search/content" \
 - Never commit credential files.
 - User can "throw away" stored key anytime by deleting `smoke-config.json` or replacing the key with a blank value.
 
-## Use bundled script
+## Use bundled scripts
+
+Two scripts are bundled. Pick based on outcome:
+
+- **`scripts/test_delphi_v3.py`** — structured JSON, pass/fail matrix, suitable for incident reports and multi-account sweeps.
+- **`scripts/jc3_delphi_demo.py`** — human-readable annotated walkthrough of every feature with redacted key, word-wrapped responses, and saved audio files. Use when introducing the API to a user or generating a demo artifact.
+
+**Manus shell timing:** `/v3/voice/*` and `--mode full --test-voice` runs can take 30–90 seconds. Set `timeout: 90` or higher when invoking these via `shell.exec`. See `references/manus-runtime.md` for full guidance.
 
 For reliable repeated testing, run chat mode:
 
 ```bash
 python3 scripts/test_delphi_v3.py --api-key "$DELPHI_API_KEY" --mode chat
+```
+
+For a demo / capability tour:
+
+```bash
+python3 scripts/jc3_delphi_demo.py                          # safe, read-only
+python3 scripts/jc3_delphi_demo.py --voice                  # add voice + TTS
+python3 scripts/jc3_delphi_demo.py --full --user-email <e>  # everything
 ```
 
 Run full mode (users/tags/info included):
