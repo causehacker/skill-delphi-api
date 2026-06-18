@@ -11,6 +11,9 @@ __pycache__/
 *.pyc
 .venv/
 
+# Local Claude Code config (settings.local.json can contain API keys)
+.claude/
+
 # macOS
 .DS_Store
 
@@ -20,5 +23,12 @@ __pycache__/
 # Optional local scratch files
 scratch/
 
-# Local Delphi config (contains secrets)
+# Local Delphi config and key registry (contain secrets)
 smoke-config.json
+keys.json
+
+# Local analysis caches (contain user PII — never commit)
+*.cache.json
+
+# Analysis output (contains customer PII — never commit)
+out/

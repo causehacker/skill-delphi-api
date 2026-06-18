@@ -32,6 +32,18 @@ Rate limits: 120 requests per 60 seconds per API key. Exceeding returns `429`.
   - Query: `?email=<user-email>` (required)
   - Response: `{ "conversations": [{ "id", "title", "created_at", "medium" }] }`
   - Sorted by newest first. Only active (non-deleted) conversations returned.
+  - `medium` values seen: `EMBED`, `WEB`, `API`, `BROWSER_VOICE`.
+  - **Intermittent `500`** on some emails — retry with backoff (it usually
+    succeeds within a few attempts; do not count a 500 as "no conversations").
+  - Returns the *full* list (no observed cap — one user came back with 2,394),
+    so per-user counts are trustworthy for retention math.
+  - **Retention methodology**: this is the primary retention signal. Per real
+    user, derive: return rate (≥2 conversations), multi-day rate (≥2 distinct
+    `created_at` calendar days — the truest signal), recency (days since the
+    newest `created_at`), and conversations-per-user depth. Report the **median**
+    per-user count, not the mean — an integration/owner account with thousands
+    of `medium: API` conversations skews the average. See
+    `scripts/audience_audit.py`.
 
 - `GET /v3/conversation/{conversation_id}/history`
   - Retrieve full message history for a conversation
@@ -98,6 +110,14 @@ Rate limits: 120 requests per 60 seconds per API key. Exceeding returns `429`.
   - Response: `{ "users": [...], "next_cursor": "...|...", "has_more": true/false }`
   - User object fields: `user_id`, `email`, `name`, `phone_number`, `tags` (string[]), `tier`, `active`, `date_joined`
   - Cursor is opaque — do not parse or construct manually. Pass `next_cursor` as `cursor` until `has_more` is false.
+  - Use `limit=1000` to sweep a full audience in the fewest pages.
+  - **Audience sizing — focus on REAL emails**: the raw list is padded with
+    test/smoke/integration addresses. A "real" email has a plausible address
+    (`@`, dotted domain, non-empty local part) and none of these markers:
+    `example`, `fake`, `test`, `noinput`, `smoke`, `placeholder`, `dummy`,
+    `invalid`, `no-reply`/`noreply`. Always report **total / real / filtered-out**
+    as three numbers; never quote the raw total as the real audience. See
+    `is_real()` in `scripts/audience_audit.py`.
 
 - `POST /v3/users/lookup`
   - Expected: `200` + `user_id`, `email`, `phone_number`

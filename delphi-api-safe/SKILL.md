@@ -1,6 +1,6 @@
 ---
 name: delphi-api-safe
-description: Safely operate and troubleshoot Delphi V3 API conversations, streaming, voice, and clone endpoints for technical and non-technical users. Use when a user asks to test Delphi API keys, run pass/fail checks across accounts, generate curl commands, debug HTTP 4xx/5xx errors, or prepare incident reports. Also trigger when the user says things like "is my clone working", "test this key", "run a smoke test", "check my Delphi", "new Delphi for [name]", or shares a dsk- API key and wants to verify it. If the user pastes a Delphi API key or mentions Delphi clones in any testing or troubleshooting context, use this skill.
+description: Safely operate and troubleshoot Delphi V3 API conversations, streaming, voice, and clone endpoints for technical and non-technical users. Use when a user asks to test Delphi API keys, run pass/fail checks across accounts, generate curl commands, debug HTTP 4xx/5xx errors, or prepare incident reports. Also use for audience and engagement analytics — sizing an audience ("how many users", "how many real emails", filtering out test/fake accounts) and measuring conversation retention ("retention", "return rate", "how many users came back", "how many have had conversations", repeat-visit and churn analysis from conversation data). Also trigger when the user says things like "is my clone working", "test this key", "run a smoke test", "check my Delphi", "new Delphi for [name]", "evaluate retention", or shares a dsk- API key and wants to verify it. If the user pastes a Delphi API key or mentions Delphi clones in any testing, troubleshooting, or audience-analytics context, use this skill.
 ---
 
 # Delphi API Safe
@@ -108,6 +108,60 @@ When the user's message already contains most of the info, ask only for what's m
 | Unknown | `dsk-****qlwI` | — | FAIL (403) | — | **FAIL** |
 
 Note: 403 on all endpoints typically means the key is not active or not yet authorized.
+
+## Audience & retention analytics
+
+Beyond pass/fail key checks, this skill measures **who is in an audience** and
+**whether they come back**. Use `scripts/audience_audit.py` (read-only) for both.
+
+### 1. Audience sizing — focus on REAL emails
+
+`GET /v3/users` returns the *raw* audience, which is padded with test, smoke, and
+integration addresses. The number that matters for any real metric is **real
+users**, not the raw total. An email is **real** when it has a plausible
+address (an `@`, a dotted domain, a non-empty local part) and contains none of
+these markers: `example`, `fake`, `test`, `noinput`, `smoke`, `placeholder`,
+`dummy`, `invalid`, `no-reply`/`noreply`. Always report **total / real /
+filtered-out** as three separate numbers — never quote the raw total as if it
+were the real audience.
+
+### 2. Conversation retention — the real return signal
+
+Retention is measured from each conversation's **`created_at` timestamp** (via
+`GET /v3/conversation/list?email=...`), not a yes/no "has a conversation" flag.
+Among real users with ≥1 conversation, report:
+
+- **Return rate** — % with ≥2 conversations (came back at least once).
+- **Multi-day rate** — % active on ≥2 distinct UTC calendar days. **This is the
+  truest retention number** — multiple conversations on the *same* day can be one
+  session split up; a new day is a genuine repeat visit. Lead with this.
+- **Recency / churn** — days since each user's last conversation (`≤7d`, `8–30d`,
+  `31–90d`, `>90d`), benchmarked against the clone's age.
+- **Depth** — conversations-per-user distribution (`1`, `2–3`, `4–10`, `11+`).
+
+**Always report the median, not just the mean.** A single integration/owner
+account with thousands of conversations (often `medium: API`) inflates the
+average; flag that outlier and quote the median as the real central tendency.
+
+### Run it
+
+```bash
+# Full audit (audience sizing + retention). --account reads keys.json; or use --api-key.
+python3 scripts/audience_audit.py --account <name>
+python3 scripts/audience_audit.py --api-key "$DELPHI_API_KEY"
+
+# Audience sizing only (fast — skips the per-user conversation pull):
+python3 scripts/audience_audit.py --api-key "$DELPHI_API_KEY" --no-retention
+
+# Machine-readable, and cache raw per-user data locally (PII — keep out of git):
+python3 scripts/audience_audit.py --account <name> --json --cache <name>.cache.json
+```
+
+Notes: the script sweeps users at `limit=1000`, sets a custom User-Agent
+(Cloudflare 403s the default `python-urllib` UA), retries Delphi's intermittent
+`500`s on `/v3/conversation/list`, and paces under the 120 req/60s limit. A full
+retention pass makes one `conversation/list` call per real user, so it takes a
+few minutes for large audiences — run it in the background.
 
 ## Standard commands
 

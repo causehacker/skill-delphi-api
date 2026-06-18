@@ -296,6 +296,14 @@
     border-top: none; display: none;
   }
   .stream-raw.visible { display: block; }
+  .stream-json {
+    background: #1e1e2e; color: #cdd6f4; border-radius: 0 0 6px 6px;
+    padding: 14px 16px; font-family: var(--mono); font-size: 12px;
+    line-height: 1.6; overflow: auto; max-height: 360px;
+    white-space: pre; tab-size: 2; border: 1px solid #313244;
+    border-top: none; display: none;
+  }
+  .stream-json.visible { display: block; }
   .stream-toggle {
     background: none; border: 1px solid var(--border); border-radius: 4px;
     padding: 2px 8px; font-size: 11px; cursor: pointer; color: var(--text-secondary);
@@ -819,35 +827,43 @@ const ENDPOINTS = [
         { name: "query", type: "string[]", req: true, desc: "Semantic search strings (questions or topics)" },
         { name: "keywords", type: "string[]", req: false, desc: "Keyword/phrase strings for exact-match (BM25) boosting" },
         { name: "content", type: "string[]", req: false, desc: "Content descriptions to scope results to matching sources" },
-        { name: "contentIds", type: "string[]", req: false, desc: "Direct content IDs to filter results" },
-        { name: "limit", type: "integer", req: false, desc: "Max chunks to return (1-50, default 10)" },
-        { name: "tag", type: "string", req: false, desc: "Access tier tag (e.g. PUBLIC, PREMIUM)" },
+        { name: "contentIds", type: "string[]", req: false, desc: "Direct content IDs to filter results (comma-sep UUIDs)" },
+        { name: "limit", type: "integer", req: false, desc: "Max chunks to return (1–50, default 10)" },
+        { name: "tag", type: "string", req: false, desc: "Access tier tag (e.g. PUBLIC, PREMIUM). Defaults to broadest access." },
       ],
       extra: [
         { id: "sq_query", placeholder: "What is your advice on...?", label: "Query" },
         { id: "sq_keywords", placeholder: "fundraising, Series A", label: "Keywords (comma-sep)", req: false },
         { id: "sq_content", placeholder: "podcast about startups", label: "Content scope (comma-sep)", req: false },
-        { id: "sq_limit", placeholder: "10", label: "Limit", type: "integer", req: false },
+        { id: "sq_content_ids", placeholder: "uuid1, uuid2", label: "Content IDs (comma-sep)", req: false },
+        { id: "sq_limit", placeholder: "10", label: "Limit (1–50)", type: "integer", req: false },
+        { id: "sq_tag", placeholder: "PUBLIC", label: "Tag (access tier)", req: false },
       ],
       bodyFn: (g, ex) => {
         const b = { query: [(ex.sq_query || "What is your advice?")] };
         if (ex.sq_keywords) b.keywords = ex.sq_keywords.split(",").map(s => s.trim()).filter(Boolean);
         if (ex.sq_content) b.content = ex.sq_content.split(",").map(s => s.trim()).filter(Boolean);
-        if (ex.sq_limit) b.limit = parseInt(ex.sq_limit, 10) || 10;
+        if (ex.sq_content_ids) b.contentIds = ex.sq_content_ids.split(",").map(s => s.trim()).filter(Boolean);
+        if (ex.sq_limit) b.limit = Math.min(50, Math.max(1, parseInt(ex.sq_limit, 10) || 10));
+        if (ex.sq_tag) b.tag = ex.sq_tag.trim();
         return b;
       }
     },
-    { method: "POST", path: "/v3/search/content", summary: "Search content sources", desc: "Search for content sources (documents, articles, podcasts, etc.) by title or description. Use this to discover available content before performing a chunk search.",
+    { method: "POST", path: "/v3/search/content", summary: "Search content sources", desc: "Search for content sources (documents, articles, podcasts, etc.) by title or description. Use this to discover available content before performing a chunk search with /v3/search/query.",
       body: [
         { name: "query", type: "string[]", req: true, desc: "Content search strings (titles, descriptions, topics)" },
-        { name: "tag", type: "string", req: false, desc: "Access tier tag (e.g. PUBLIC, PREMIUM)" },
+        { name: "tag", type: "string", req: false, desc: "Access tier tag (e.g. PUBLIC, PREMIUM). Defaults to broadest access." },
       ],
       extra: [
         { id: "sc_query", placeholder: "fundraising, startup advice", label: "Query (comma-sep)" },
+        { id: "sc_tag", placeholder: "PUBLIC", label: "Tag (access tier)", req: false },
       ],
       bodyFn: (g, ex) => {
+        const b = {};
         const q = (ex.sc_query || "").split(",").map(s => s.trim()).filter(Boolean);
-        return { query: q.length ? q : ["general"] };
+        b.query = q.length ? q : ["general"];
+        if (ex.sc_tag) b.tag = ex.sc_tag.trim();
+        return b;
       }
     },
   ]},
@@ -1048,14 +1064,13 @@ function renderParamsTable(params, title) {
 
 function renderExtras(ep, idx) {
   if (!ep.extra || !ep.extra.length) return "";
-  let html = '<div class="endpoint-section"><h4>Parameters</h4><div style="display:flex;flex-direction:column;gap:6px">';
+  let html = '<div class="endpoint-section"><h4>Parameters</h4><div style="display:grid;grid-template-columns:190px 1fr;row-gap:6px;column-gap:8px;align-items:center">';
   ep.extra.forEach(e => {
     const isReq = e.req !== false;
     const reqMark = isReq ? ' *' : '';
-    html += `<div style="display:flex;align-items:center;gap:8px">`;
-    html += `<label style="min-width:120px;font-size:12px;color:var(--text-secondary);font-weight:500;text-align:right;white-space:nowrap" for="${e.id}">${e.label}${reqMark}</label>`;
+    html += `<label style="font-size:12px;color:var(--text-secondary);font-weight:500;text-align:right;white-space:nowrap;padding-right:4px" for="${e.id}">${e.label}${reqMark}</label>`;
     if (e.type === "select" && e.options) {
-      html += `<select id="${e.id}" style="flex:1;min-width:0;padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:12px;background:var(--bg)" data-ep="${idx}" data-param="${e.placeholder}" class="ep-extra" data-req="${isReq}" data-type="select">`;
+      html += `<select id="${e.id}" style="width:100%;min-width:0;box-sizing:border-box;padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:12px;background:var(--bg)" data-ep="${idx}" data-param="${e.placeholder}" class="ep-extra" data-req="${isReq}" data-type="select">`;
       e.options.forEach((o, i) => {
         const label = o === "" ? "(none)" : o;
         html += `<option value="${o}"${i === 0 ? " selected" : ""}>${label}</option>`;
@@ -1063,9 +1078,8 @@ function renderExtras(ep, idx) {
       html += `</select>`;
     } else {
       const inputType = e.type === "integer" ? "number" : "text";
-      html += `<input id="${e.id}" type="${inputType}" placeholder="${e.placeholder}" style="flex:1;min-width:0;padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:12px" data-ep="${idx}" data-param="${e.placeholder}" class="ep-extra" data-req="${isReq}" data-type="${e.type || "string"}">`;
+      html += `<input id="${e.id}" type="${inputType}" placeholder="${e.placeholder}" style="width:100%;min-width:0;box-sizing:border-box;padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-family:var(--mono);font-size:12px" data-ep="${idx}" data-param="${e.placeholder}" class="ep-extra" data-req="${isReq}" data-type="${e.type || "string"}">`;
     }
-    html += `</div>`;
   });
   html += "</div></div>";
   return html;
@@ -1092,6 +1106,7 @@ function renderEndpoint(ep, idx) {
           <div class="curl-block" id="curl-${idx}">${escCurl(buildCurl(ep))}</div>
           <div class="actions">
             <button class="btn btn-copy" onclick="copyCurl(${idx})">&#128203; Copy curl</button>
+            ${ep.stream ? `<button class="btn btn-copy" onclick="copyCurlFinalJson(${idx})" title="Copies a curl that waits for the full SSE stream, then pretty-prints the final JSON payload">&#128203; Copy curl + final JSON</button>` : ``}
             <button class="btn btn-send" id="btn-send-${idx}" onclick="sendReq(${idx})">&#9654; Send</button>
             <button class="btn btn-format" id="btn-fmt-${idx}" onclick="formatPaste(${idx})">&#10024; Format</button>
           </div>
@@ -1102,11 +1117,13 @@ function renderEndpoint(ep, idx) {
               <span class="stream-status" id="stream-status-${idx}"></span>
               <span class="stream-meta" id="stream-meta-${idx}"></span>
               <span class="spacer"></span>
+              <button class="stream-toggle" id="stream-json-toggle-${idx}" onclick="toggleJson(${idx})">Final JSON</button>
               <button class="stream-toggle" id="stream-toggle-${idx}" onclick="toggleRaw(${idx})">Raw SSE</button>
               <button class="btn-copy-resp" id="btn-copy-stream-${idx}" onclick="copyStream(${idx})">&#128203; Copy</button>
             </div>
             <div class="stream-output" id="stream-output-${idx}"></div>
             <pre class="stream-raw" id="stream-raw-${idx}"></pre>
+            <pre class="stream-json" id="stream-json-${idx}"></pre>
           </div>` : `
           <div class="response-panel" id="resp-${idx}">
             <div class="response-bar">
@@ -1222,6 +1239,43 @@ function copyCurl(idx) {
   navigator.clipboard.writeText(buildCurl(flatEps[idx])).then(() => toast("Copied to clipboard"));
 }
 
+// Build a curl for an SSE endpoint that buffers the whole stream, then pretty-prints
+// the final consolidated JSON payload (the [DONE] chunk with text/id/citations).
+function buildCurlFinalJson(ep) {
+  const g = globals();
+  const key = g.apiKey || "$DELPHI_API_KEY";
+  const url = curlUrl(ep);
+  let parts = [`curl -sS -N -X ${ep.method} "${url}"`];
+  parts.push(`  -H "x-api-key: ${key}"`);
+  const body = resolvedBody(ep);
+  if (body && Object.keys(body).length > 0) {
+    parts.push(`  -H "Content-Type: application/json"`);
+    parts.push(`  -d '${JSON.stringify(body)}'`);
+  }
+  const curl = parts.join(" \\\n");
+  // Post-processor: read the entire SSE stream, keep the final payload, pretty-print it.
+  const py = [
+    `python3 -c '`,
+    `import sys, json`,
+    `final = None`,
+    `for line in sys.stdin:`,
+    `    line = line.strip()`,
+    `    if not line.startswith("data:"): continue`,
+    `    payload = line[5:].strip()`,
+    `    if not payload or payload == "[DONE]": continue`,
+    `    try: obj = json.loads(payload)`,
+    `    except json.JSONDecodeError: continue`,
+    `    if obj.get("current_token") == "[DONE]" or obj.get("text"): final = obj`,
+    `print(json.dumps(final, indent=2, ensure_ascii=False) if final else "No final JSON payload found.")'`,
+  ].join("\n");
+  return curl + " \\\n| " + py;
+}
+
+function copyCurlFinalJson(idx) {
+  refreshCurl(idx);
+  navigator.clipboard.writeText(buildCurlFinalJson(flatEps[idx])).then(() => toast("Copied curl + final JSON"));
+}
+
 function copyResponse(idx) {
   const bodyEl = $id("resp-body-" + idx);
   if (!bodyEl || !bodyEl.textContent) { toast("No response to copy"); return; }
@@ -1237,15 +1291,39 @@ function copyResponse(idx) {
 function toggleRaw(idx) {
   const raw = $id("stream-raw-" + idx);
   const btn = $id("stream-toggle-" + idx);
-  raw.classList.toggle("visible");
-  btn.classList.toggle("active");
+  const show = !raw.classList.contains("visible");
+  raw.classList.toggle("visible", show);
+  btn.classList.toggle("active", show);
+  if (show) { // mutually exclusive with Final JSON
+    const json = $id("stream-json-" + idx), jbtn = $id("stream-json-toggle-" + idx);
+    if (json) { json.classList.remove("visible"); jbtn.classList.remove("active"); }
+  }
+}
+
+function toggleJson(idx) {
+  const json = $id("stream-json-" + idx);
+  const btn = $id("stream-json-toggle-" + idx);
+  const show = !json.classList.contains("visible");
+  json.classList.toggle("visible", show);
+  btn.classList.toggle("active", show);
+  if (show) { // mutually exclusive with Raw SSE
+    const raw = $id("stream-raw-" + idx), rbtn = $id("stream-toggle-" + idx);
+    if (raw) { raw.classList.remove("visible"); rbtn.classList.remove("active"); }
+  }
 }
 
 function copyStream(idx) {
+  // Copy whichever view is active: Final JSON > Raw SSE > formatted text
+  const json = $id("stream-json-" + idx);
+  const raw = $id("stream-raw-" + idx);
   const out = $id("stream-output-" + idx);
-  if (!out || !out.textContent) { toast("No response to copy"); return; }
+  let text = "";
+  if (json && json.classList.contains("visible")) text = json.textContent;
+  else if (raw && raw.classList.contains("visible")) text = raw.textContent;
+  else text = out ? out.textContent : "";
+  if (!text) { toast("No response to copy"); return; }
   const btn = $id("btn-copy-stream-" + idx);
-  navigator.clipboard.writeText(out.textContent).then(() => {
+  navigator.clipboard.writeText(text).then(() => {
     btn.classList.add("copied");
     btn.innerHTML = "&#10003; Copied";
     setTimeout(() => { btn.classList.remove("copied"); btn.innerHTML = "&#128203; Copy"; }, 1500);
@@ -1276,6 +1354,7 @@ async function sendStreamReq(idx) {
   const metaEl = $id("stream-meta-" + idx);
   const outEl = $id("stream-output-" + idx);
   const rawEl = $id("stream-raw-" + idx);
+  const jsonEl = $id("stream-json-" + idx);
 
   panel.classList.add("visible");
   statusEl.textContent = "STREAMING";
@@ -1283,6 +1362,7 @@ async function sendStreamReq(idx) {
   metaEl.textContent = "0 tokens";
   outEl.innerHTML = '<span class="cursor"></span>';
   rawEl.textContent = "";
+  jsonEl.textContent = "";
 
   const url = resolvedUrl(ep);
   const body = resolvedBody(ep);
@@ -1357,6 +1437,13 @@ async function sendStreamReq(idx) {
     if (finalData) {
       rawEl.textContent += "\n── Final payload ──\n" + JSON.stringify(finalData, null, 2);
     }
+
+    // Populate the Final JSON view with the consolidated payload
+    jsonEl.textContent = finalData
+      ? JSON.stringify(finalData, null, 2)
+      : (assembledText
+          ? JSON.stringify({ text: assembledText }, null, 2)
+          : "No final payload received (stream ended without a [DONE] chunk).");
 
   } catch (err) {
     const ms = Math.round(performance.now() - t0);
