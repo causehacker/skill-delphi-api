@@ -1,0 +1,25 @@
+{
+  "skill_name": "delphi-fleet-audit",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "check all my delphi accounts",
+      "expected_output": "Should read keys.json (not ask for keys), run fleet_audit.py, and present the one-matrix house table with all keys redacted plus a plain-English line per failing account"
+    },
+    {
+      "id": 2,
+      "prompt": "which of my clones are down right now?",
+      "expected_output": "Should run the health sweep and lead with only the non-PASS rows, distinguishing key-not-active (403) from per-clone stream incidents (500)"
+    },
+    {
+      "id": 3,
+      "prompt": "audience sizes across the whole fleet",
+      "expected_output": "Should run with --sizing and report total / real / filtered-out per clone — all three numbers, never the raw total alone"
+    },
+    {
+      "id": 4,
+      "prompt": "how does the fleet look compared to last week's sweep?",
+      "expected_output": "Should look for prior snapshot in out/, diff overall status and real_users per account, and report only the deltas; if no prior snapshot exists, run one now with --out and say the baseline starts today"
+    }
+  ]
+}

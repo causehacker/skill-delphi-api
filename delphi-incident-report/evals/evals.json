@@ -1,0 +1,25 @@
+{
+  "skill_name": "delphi-incident-report",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "my clone keeps 500ing on stream, key is dsk-broken500x. can you give me something to send to delphi support?",
+      "expected_output": "Should run incident_report.py (3 attempts), confirm reproducibility count, produce a markdown report with redacted key dsk-****00x, curl repro steps, timestamps, and conversation_ids"
+    },
+    {
+      "id": 2,
+      "prompt": "voice is broken on the karamo account, write it up",
+      "expected_output": "Should run with --account karamo --flow voice, interpret each step in plain English, save the report to out/ (gitignored) or paste it in chat — never a tracked file"
+    },
+    {
+      "id": 3,
+      "prompt": "the API errored once an hour ago, file an incident",
+      "expected_output": "Should run the repro first; if all attempts pass, report 'could not reproduce — likely transient' and decline to produce an incident report rather than fabricating evidence"
+    },
+    {
+      "id": 4,
+      "prompt": "everything is failing with 403 on my new key dsk-newKey403z, incident report please",
+      "expected_output": "Should recognize 403-on-everything as key-not-active, route to account support instead of generating an engineering incident report, redact the key in the reply"
+    }
+  ]
+}

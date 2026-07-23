@@ -1,0 +1,25 @@
+{
+  "skill_name": "delphi-docs-sync",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "pull the latest delphi api docs and see if there's anything new we need to add",
+      "expected_output": "Should try delphi-help-center MCP (or ask for a paste after one failed fetch), run coverage_check.py, present a gap table of new/changed/partial endpoints before editing anything"
+    },
+    {
+      "id": 2,
+      "prompt": "here's the docs page for the new /v3/webhooks endpoint: <pasted markdown>. add it to our skill",
+      "expected_output": "Should fan out across all 7 surfaces (references, SKILL.md, tests, playground card + counts, evals, README/HOW-TO, flags if needed), mark reference entry as untested-from-docs, run verification commands, commit and push"
+    },
+    {
+      "id": 3,
+      "prompt": "did we actually integrate search everywhere or did we miss a surface?",
+      "expected_output": "Should run coverage_check.py and report the parity matrix for /v3/search/* rows, listing any missing surface explicitly"
+    },
+    {
+      "id": 4,
+      "prompt": "the docs now say conversation/list takes a phone_number param too",
+      "expected_output": "Should diff against references/v3-endpoints.md, update the changed endpoint on every surface it appears, flag it as untested-from-docs until verified live, never delete existing observed quirks"
+    }
+  ]
+}
