@@ -45,6 +45,14 @@
   }
   .topbar .logo { font-weight: 700; font-size: 16px; color: var(--accent); white-space: nowrap; letter-spacing: -.3px; }
   .topbar .logo span { color: var(--text-secondary); font-weight: 400; font-size: 13px; margin-left: 6px; }
+  .ver-toggle { display: flex; gap: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 2px; }
+  .ver-btn {
+    font-family: var(--font); font-size: 12px; font-weight: 600; letter-spacing: .3px;
+    padding: 4px 12px; border: none; border-radius: 4px; cursor: pointer;
+    background: transparent; color: var(--text-secondary); transition: background .12s, color .12s;
+  }
+  .ver-btn:hover { color: var(--text); }
+  .ver-btn.active { background: var(--accent); color: #fff; }
   .topbar .fields { display: flex; gap: 10px; flex: 1; max-width: 720px; }
   .topbar input {
     flex: 1; min-width: 0; padding: 7px 12px; border: 1px solid var(--border);
@@ -214,6 +222,16 @@
   }
   .mode-banner.proxy { background: var(--get-bg); color: #15803d; border: 1px solid #bbf7d0; }
   .mode-banner.static { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+  .danger-banner {
+    display: flex; align-items: center; gap: 8px;
+    margin: 0 0 12px; padding: 9px 12px; border-radius: 6px;
+    font-size: 12.5px; line-height: 1.45;
+  }
+  .danger-banner .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .danger-banner.destructive { background: var(--delete-bg); color: #991b1b; border: 1px solid #fecaca; }
+  .danger-banner.destructive .dot { background: var(--delete); }
+  .danger-banner.metered { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+  .danger-banner.metered .dot { background: #f59e0b; }
   .mode-banner .dot { width: 8px; height: 8px; border-radius: 50%; }
   .mode-banner.proxy .dot { background: var(--get); }
   .mode-banner.static .dot { background: #f59e0b; }
@@ -485,7 +503,11 @@
 
 <!-- ── Top Bar ── -->
 <div class="topbar">
-  <div class="logo">Delphi<span>V3 API</span></div>
+  <div class="logo">Delphi<span id="logoVer">V3 API</span></div>
+  <div class="ver-toggle" role="group" aria-label="API version">
+    <button class="ver-btn active" data-ver="v3" onclick="switchVersion('v3')" title="Chat, streaming, voice, knowledge-base search">V3</button>
+    <button class="ver-btn" data-ver="v4" onclick="switchVersion('v4')" title="Contacts, content writes, messaging, webhooks, integrations">V4</button>
+  </div>
   <div class="fields">
     <input id="apiKey" type="password" placeholder="x-api-key" spellcheck="false">
     <input id="userEmail" type="email" placeholder="user email (optional)" spellcheck="false">
@@ -503,8 +525,8 @@
 
 <!-- ── Main ── -->
 <div class="main">
-  <h1>Delphi V3 API Reference</h1>
-  <p class="subtitle">Interactive endpoint explorer &mdash; 25 endpoints, zero dependencies. Fill in your API key above to enable live testing.</p>
+  <h1 id="apiTitle">Delphi V3 API Reference</h1>
+  <p class="subtitle" id="apiSubtitle">Interactive endpoint explorer &mdash; 25 endpoints, zero dependencies. Fill in your API key above to enable live testing.</p>
   <div id="modeBanner"></div>
   <div id="endpoints"></div>
 </div>
@@ -555,7 +577,7 @@ function updateModeBanner() {
    - req: true (default) or false
    - global: "userEmail" — auto-populates from top bar
 */
-const ENDPOINTS = [
+const ENDPOINTS_V3 = [
   { section: "Conversations", endpoints: [
     { method: "POST", path: "/v3/conversation", summary: "Create conversation", desc: "Start a new conversation and get the initial greeting.",
       body: [
@@ -903,6 +925,468 @@ const ENDPOINTS = [
   ]},
 ];
 
+/* ── V4: Delphi Developer Platform API ──
+   Separate surface from V3 — no chat/stream/voice/search here.
+   Responses wrap in {"data": ...}; errors are {"type","code","message"}.
+   `danger` marks endpoints that mutate real-world state:
+     "destructive" — irreversible or externally visible (red)
+     "metered"     — safe but costs budget/tokens (amber)
+*/
+const ENDPOINTS_V4 = [
+  { section: "Profile", endpoints: [
+    { method: "GET", path: "/v4/profile", summary: "Get owner profile", desc: "Identity discovery for the key owner &mdash; the V4 analogue of <code>GET /v3/clone</code>. Returns user summary, bio, headline, social links, verification state, and suggested questions." },
+    { method: "GET", path: "/v4/profile/questions", summary: "List profile questions", desc: "Profile-level suggested questions. The V4 replacement for <code>GET /v3/questions</code>. Response nests: <code>{data:{questions:[...]}}</code>." },
+    { method: "GET", path: "/v4/profiles/{username}", summary: "Get profile by username", desc: "Public profile by username handle. Private profiles are visible only to the owner, collaborators, or linked contacts.",
+      pathParams: [{ name: "username", desc: "Public username handle (e.g. jc3)" }],
+      extra: [{ id: "v4_username", placeholder: "username", label: "Username" }],
+      pathFn: (g, ex) => `/v4/profiles/${encodeURIComponent(ex.v4_username || "<username>")}`
+    },
+  ]},
+
+  { section: "Contacts", endpoints: [
+    { method: "GET", path: "/v4/contacts", summary: "List contact cohort", desc: "Cursor-paginated cohort with rich server-side filtering &mdash; far more capable than V3's <code>/v3/users</code>. Without the <code>contacts:list:pii</code> scope, rows omit <code>email</code> and <code>phone</code>. Requires <code>contacts:list</code>.",
+      query: [
+        { name: "limit", type: "integer", req: false, desc: "Page size 1-200 (default 50)" },
+        { name: "search", type: "string", req: false, desc: "Search name, email, or phone" },
+        { name: "sort", type: "string", req: false, desc: "name | messages | lastActive" },
+        { name: "direction", type: "string", req: false, desc: "asc | desc" },
+        { name: "status", type: "string", req: false, desc: "active | invited" },
+        { name: "cursor", type: "string", req: false, desc: "nextCursor from previous page" },
+      ],
+      extra: [
+        { id: "v4c_limit", placeholder: "50", label: "Limit", type: "integer", req: false },
+        { id: "v4c_search", placeholder: "search", label: "Search", req: false },
+        { id: "v4c_sort", placeholder: "sort", label: "Sort", type: "select", options: ["lastActive", "name", "messages"], req: false },
+        { id: "v4c_dir", placeholder: "direction", label: "Direction", type: "select", options: ["desc", "asc"], req: false },
+        { id: "v4c_cursor", placeholder: "cursor", label: "Cursor", req: false },
+      ],
+      queryFn: (g, ex) => {
+        const p = new URLSearchParams();
+        p.set("limit", ex.v4c_limit || "50");
+        if (ex.v4c_search) p.set("search", ex.v4c_search);
+        if (ex.v4c_sort) p.set("sort", ex.v4c_sort);
+        if (ex.v4c_dir) p.set("direction", ex.v4c_dir);
+        if (ex.v4c_cursor) p.set("cursor", ex.v4c_cursor);
+        return "?" + p.toString();
+      }
+    },
+    { method: "POST", path: "/v4/contacts", summary: "Create or upsert contact", desc: "Email-keyed upsert. <strong>Returns <code>wasCreated</code></strong> &mdash; unlike V3's <code>/v3/users/lookup</code>, you don't have to sweep the audience to learn whether a row was inserted or matched.",
+      body: [
+        { name: "email", type: "string", req: true, desc: "Upsert key" },
+        { name: "name", type: "string", req: false, desc: "Contact name (1-200)" },
+        { name: "tags", type: "string[]", req: false, desc: "Tag names, created if needed (comma-separated)" },
+        { name: "accessTier", type: "string", req: false, desc: "PUBLIC | INTERNAL" },
+      ],
+      extra: [
+        { id: "v4cc_email", placeholder: "email", label: "Email", global: "userEmail" },
+        { id: "v4cc_name", placeholder: "name", label: "Name", req: false },
+        { id: "v4cc_tags", placeholder: "tag1,tag2", label: "Tags (comma-sep)", req: false },
+        { id: "v4cc_tier", placeholder: "accessTier", label: "Access Tier", type: "select", options: ["", "PUBLIC", "INTERNAL"], req: false },
+      ],
+      bodyFn: (g, ex) => {
+        const b = { email: ex.v4cc_email || "<email>" };
+        if (ex.v4cc_name) b.name = ex.v4cc_name;
+        if (ex.v4cc_tags) b.tags = ex.v4cc_tags.split(",").map(t => t.trim()).filter(Boolean);
+        if (ex.v4cc_tier) b.accessTier = ex.v4cc_tier;
+        return b;
+      }
+    },
+    { method: "GET", path: "/v4/contacts/{id}", summary: "Get contact", desc: "One contact by ID. Requires <code>contacts:read</code>. Note: a V4 contact ID is <em>not</em> the same as a V3 <code>user_id</code>.",
+      pathParams: [{ name: "id", desc: "Contact UUID" }],
+      extra: [{ id: "v4cd_id", placeholder: "contact_id", label: "Contact ID" }],
+      pathFn: (g, ex) => `/v4/contacts/${ex.v4cd_id || "<contact_id>"}`
+    },
+    { method: "PATCH", path: "/v4/contacts/{id}", summary: "Update contact access tier", desc: "Updates the audience-selectable access tier only. This is not a general-purpose contact editor.",
+      pathParams: [{ name: "id", desc: "Contact UUID" }],
+      body: [{ name: "accessTier", type: "string", req: true, desc: "PUBLIC | INTERNAL" }],
+      extra: [
+        { id: "v4cp_id", placeholder: "contact_id", label: "Contact ID" },
+        { id: "v4cp_tier", placeholder: "accessTier", label: "Access Tier", type: "select", options: ["PUBLIC", "INTERNAL"] },
+      ],
+      pathFn: (g, ex) => `/v4/contacts/${ex.v4cp_id || "<contact_id>"}`,
+      bodyFn: (g, ex) => ({ accessTier: ex.v4cp_tier || "PUBLIC" })
+    },
+    { method: "GET", path: "/v4/contacts/{id}/threads", summary: "List contact conversations", desc: "Cursor-paginated conversations, newest-first, each with a full narrative <code>summary</code>, last-message preview, message count, and channel. Transcript-class content requires <code>transcripts:read</code>. A contact with no linked visitor returns an empty page, not a 404.",
+      pathParams: [{ name: "id", desc: "Contact UUID" }],
+      query: [{ name: "limit", type: "integer", req: false, desc: "1-200 (default 50)" }],
+      extra: [
+        { id: "v4ct_id", placeholder: "contact_id", label: "Contact ID" },
+        { id: "v4ct_limit", placeholder: "50", label: "Limit", type: "integer", req: false },
+      ],
+      pathFn: (g, ex) => `/v4/contacts/${ex.v4ct_id || "<contact_id>"}/threads`,
+      queryFn: (g, ex) => `?limit=${ex.v4ct_limit || "50"}`
+    },
+  ]},
+
+  { section: "Contact Tags", endpoints: [
+    { method: "GET", path: "/v4/contact-tags", summary: "List contact tags", desc: "All tag definitions for the key owner." },
+    { method: "POST", path: "/v4/contact-tags", summary: "Create contact tag", desc: "Create a tag definition. Unlike V3's <code>POST /v3/tags</code>, <strong>color is auto-assigned</strong> from a fixed palette &mdash; not caller-supplied.",
+      body: [{ name: "name", type: "string", req: true, desc: "Tag name (1-50)" }],
+      extra: [{ id: "v4tg_name", placeholder: "tag-name", label: "Tag Name" }],
+      bodyFn: (g, ex) => ({ name: ex.v4tg_name || "<tag-name>" })
+    },
+    { method: "POST", path: "/v4/contacts/{id}/tags", summary: "Assign tag to contact", desc: "Idempotent. Note V4 takes a <strong>tag ID in the body</strong>, whereas V3 took a tag <em>name</em> in the path.",
+      pathParams: [{ name: "id", desc: "Contact UUID" }],
+      body: [{ name: "tagId", type: "string", req: true, desc: "Tag ID to assign" }],
+      extra: [
+        { id: "v4ta_id", placeholder: "contact_id", label: "Contact ID" },
+        { id: "v4ta_tag", placeholder: "tag_id", label: "Tag ID" },
+      ],
+      pathFn: (g, ex) => `/v4/contacts/${ex.v4ta_id || "<contact_id>"}/tags`,
+      bodyFn: (g, ex) => ({ tagId: ex.v4ta_tag || "<tag_id>" })
+    },
+    { method: "DELETE", path: "/v4/contacts/{id}/tags/{tagId}", summary: "Unassign tag", desc: "Idempotent &mdash; removing an absent assignment succeeds.",
+      pathParams: [{ name: "id", desc: "Contact UUID" }, { name: "tagId", desc: "Tag UUID" }],
+      extra: [
+        { id: "v4tu_id", placeholder: "contact_id", label: "Contact ID" },
+        { id: "v4tu_tag", placeholder: "tag_id", label: "Tag ID" },
+      ],
+      pathFn: (g, ex) => `/v4/contacts/${ex.v4tu_id || "<contact_id>"}/tags/${ex.v4tu_tag || "<tag_id>"}`
+    },
+    { method: "POST", path: "/v4/contacts/bulk/tags", summary: "Bulk update contact tags", desc: "Apply an add/remove diff across explicit contact IDs or a filter target. The bulk-segmentation primitive &mdash; no V3 equivalent.",
+      body: [
+        { name: "target", type: "object", req: true, desc: "Explicit contact IDs or a filter" },
+        { name: "add", type: "string[]", req: false, desc: "Tag IDs to add" },
+        { name: "remove", type: "string[]", req: false, desc: "Tag IDs to remove" },
+      ],
+      extra: [
+        { id: "v4bt_ids", placeholder: "id1,id2", label: "Contact IDs (comma-sep)" },
+        { id: "v4bt_add", placeholder: "tagId1,tagId2", label: "Add Tag IDs", req: false },
+        { id: "v4bt_rm", placeholder: "tagId3", label: "Remove Tag IDs", req: false },
+      ],
+      bodyFn: (g, ex) => {
+        const list = s => (s || "").split(",").map(x => x.trim()).filter(Boolean);
+        const b = { target: { contactIds: list(ex.v4bt_ids) } };
+        if (ex.v4bt_add) b.add = list(ex.v4bt_add);
+        if (ex.v4bt_rm) b.remove = list(ex.v4bt_rm);
+        return b;
+      }
+    },
+  ]},
+
+  { section: "Contact Properties", endpoints: [
+    { method: "GET", path: "/v4/contact-properties/definitions", summary: "List property definitions", desc: "Custom owner-defined contact fields. No V3 equivalent &mdash; V3's closest relative is the fixed-vocabulary <code>/v3/users/{id}/info</code>." },
+    { method: "POST", path: "/v4/contact-properties/definitions", summary: "Create property definition", desc: "Create a free-text property definition. Color is auto-assigned; allowed values are not exposed on v4.",
+      body: [{ name: "name", type: "string", req: true, desc: "Property name (1-50)" }],
+      extra: [{ id: "v4pd_name", placeholder: "property-name", label: "Property Name" }],
+      bodyFn: (g, ex) => ({ name: ex.v4pd_name || "<property-name>" })
+    },
+    { method: "GET", path: "/v4/contacts/{id}/properties", summary: "List contact property values", desc: "Free-text property values set on one contact.",
+      pathParams: [{ name: "id", desc: "Contact UUID" }],
+      extra: [{ id: "v4pv_id", placeholder: "contact_id", label: "Contact ID" }],
+      pathFn: (g, ex) => `/v4/contacts/${ex.v4pv_id || "<contact_id>"}/properties`
+    },
+    { method: "POST", path: "/v4/contacts/{id}/properties", summary: "Create property value", desc: "Set one free-text property value on a contact.",
+      pathParams: [{ name: "id", desc: "Contact UUID" }],
+      body: [
+        { name: "propertyDefinitionId", type: "string", req: true, desc: "Definition ID" },
+        { name: "value", type: "string", req: true, desc: "Free-text value (1-500)" },
+      ],
+      extra: [
+        { id: "v4pc_id", placeholder: "contact_id", label: "Contact ID" },
+        { id: "v4pc_def", placeholder: "definition_id", label: "Definition ID" },
+        { id: "v4pc_val", placeholder: "value", label: "Value" },
+      ],
+      pathFn: (g, ex) => `/v4/contacts/${ex.v4pc_id || "<contact_id>"}/properties`,
+      bodyFn: (g, ex) => ({ propertyDefinitionId: ex.v4pc_def || "<definition_id>", value: ex.v4pc_val || "<value>" })
+    },
+    { method: "PATCH", path: "/v4/contacts/{id}/properties/{propertyValueId}", summary: "Update property value", desc: "Update one free-text property value.",
+      pathParams: [{ name: "id", desc: "Contact UUID" }, { name: "propertyValueId", desc: "Property value UUID" }],
+      body: [{ name: "value", type: "string", req: true, desc: "New value (1-500)" }],
+      extra: [
+        { id: "v4pu_id", placeholder: "contact_id", label: "Contact ID" },
+        { id: "v4pu_pv", placeholder: "property_value_id", label: "Property Value ID" },
+        { id: "v4pu_val", placeholder: "value", label: "Value" },
+      ],
+      pathFn: (g, ex) => `/v4/contacts/${ex.v4pu_id || "<contact_id>"}/properties/${ex.v4pu_pv || "<property_value_id>"}`,
+      bodyFn: (g, ex) => ({ value: ex.v4pu_val || "<value>" })
+    },
+    { method: "DELETE", path: "/v4/contacts/{id}/properties/{propertyValueId}", summary: "Delete property value", desc: "Remove one property value from a contact.",
+      pathParams: [{ name: "id", desc: "Contact UUID" }, { name: "propertyValueId", desc: "Property value UUID" }],
+      extra: [
+        { id: "v4px_id", placeholder: "contact_id", label: "Contact ID" },
+        { id: "v4px_pv", placeholder: "property_value_id", label: "Property Value ID" },
+      ],
+      pathFn: (g, ex) => `/v4/contacts/${ex.v4px_id || "<contact_id>"}/properties/${ex.v4px_pv || "<property_value_id>"}`
+    },
+  ]},
+
+  { section: "Content", endpoints: [
+    { method: "GET", path: "/v4/content", summary: "List content", desc: "Cursor-paginated knowledge base, newest-first. Requires <code>content:read</code>. Filter by type (e.g. <code>QA</code>, <code>MANUAL</code>), status, folder, access tier, title search, or <code>uploadId</code>.",
+      query: [
+        { name: "limit", type: "integer", req: false, desc: "1-200 (default 50)" },
+        { name: "type", type: "string", req: false, desc: "PDF, QA, MANUAL, YOUTUBE, WEBSITE, ... (33 values)" },
+        { name: "status", type: "string", req: false, desc: "START | QUEUED | PROCESSING | COMPLETE | FAILED | DELETING" },
+        { name: "search", type: "string", req: false, desc: "Title search (case-insensitive)" },
+      ],
+      extra: [
+        { id: "v4ct_lim", placeholder: "50", label: "Limit", type: "integer", req: false },
+        { id: "v4ct_type", placeholder: "type", label: "Type", type: "select", options: ["", "QA", "MANUAL", "WEBSITE", "YOUTUBE", "PODCAST", "PDF", "TWITTER", "MARKDOWN"], req: false },
+        { id: "v4ct_status", placeholder: "status", label: "Status", type: "select", options: ["", "COMPLETE", "PROCESSING", "QUEUED", "START", "FAILED"], req: false },
+        { id: "v4ct_search", placeholder: "search", label: "Title Search", req: false },
+      ],
+      queryFn: (g, ex) => {
+        const p = new URLSearchParams();
+        p.set("limit", ex.v4ct_lim || "50");
+        if (ex.v4ct_type) p.set("type", ex.v4ct_type);
+        if (ex.v4ct_status) p.set("status", ex.v4ct_status);
+        if (ex.v4ct_search) p.set("search", ex.v4ct_search);
+        return "?" + p.toString();
+      }
+    },
+    { method: "POST", path: "/v4/content", summary: "Create content (QA / note / URL)", desc: "Ingest 1-100 items into the knowledge base. Requires <code>content:write</code>. <strong>Asynchronous</strong> &mdash; each item returns a <code>contentId</code> immediately, then processes in the background. Poll <code>GET /v4/content/{id}</code> until <code>status</code> is <code>COMPLETE</code>. This is a real write to the mind's knowledge.",
+      danger: "destructive",
+      body: [
+        { name: "items", type: "object[]", req: true, desc: "qa | note | url items (1-100)" },
+        { name: "accessTier", type: "string", req: false, desc: "PUBLIC | INTERNAL | PRIVATE (default PUBLIC)" },
+      ],
+      extra: [
+        { id: "v4cn_kind", placeholder: "type", label: "Item Type", type: "select", options: ["qa", "note", "url"] },
+        { id: "v4cn_a", placeholder: "question / text / url", label: "Question | Text | URL" },
+        { id: "v4cn_b", placeholder: "answer (qa only)", label: "Answer (qa only)", req: false },
+        { id: "v4cn_tier", placeholder: "accessTier", label: "Access Tier", type: "select", options: ["", "PUBLIC", "INTERNAL", "PRIVATE"], req: false },
+      ],
+      bodyFn: (g, ex) => {
+        const kind = ex.v4cn_kind || "qa";
+        let item;
+        if (kind === "qa") item = { type: "qa", question: ex.v4cn_a || "<question>", answer: ex.v4cn_b || "<answer>" };
+        else if (kind === "note") item = { type: "note", text: ex.v4cn_a || "<text>" };
+        else item = { type: "url", url: ex.v4cn_a || "https://example.com" };
+        const b = { items: [item] };
+        if (ex.v4cn_tier) b.accessTier = ex.v4cn_tier;
+        return b;
+      }
+    },
+    { method: "GET", path: "/v4/content/{id}", summary: "Get content", desc: "One item including processing <code>status</code> and, for QA/note content, the inline <code>question</code>/<code>answer</code>/<code>text</code> body.",
+      pathParams: [{ name: "id", desc: "Content UUID" }],
+      extra: [{ id: "v4cg_id", placeholder: "content_id", label: "Content ID" }],
+      pathFn: (g, ex) => `/v4/content/${ex.v4cg_id || "<content_id>"}`
+    },
+    { method: "PATCH", path: "/v4/content/{id}", summary: "Update content", desc: "Update in place. Editing <code>question</code>/<code>answer</code> or <code>text</code> <strong>rewrites the body and re-learns it</strong> &mdash; the item returns to <code>START</code> and is re-embedded, no delete-and-reupload needed.",
+      danger: "destructive",
+      pathParams: [{ name: "id", desc: "Content UUID" }],
+      body: [
+        { name: "title", type: "string", req: false, desc: "New display title" },
+        { name: "question", type: "string", req: false, desc: "QA only — triggers re-learning" },
+        { name: "answer", type: "string", req: false, desc: "QA only — triggers re-learning" },
+        { name: "text", type: "string", req: false, desc: "Note only — triggers re-learning" },
+        { name: "accessTier", type: "string", req: false, desc: "PRIVATE | INTERNAL | PUBLIC" },
+      ],
+      extra: [
+        { id: "v4cu_id", placeholder: "content_id", label: "Content ID" },
+        { id: "v4cu_title", placeholder: "title", label: "Title", req: false },
+        { id: "v4cu_tier", placeholder: "accessTier", label: "Access Tier", type: "select", options: ["", "PUBLIC", "INTERNAL", "PRIVATE"], req: false },
+      ],
+      pathFn: (g, ex) => `/v4/content/${ex.v4cu_id || "<content_id>"}`,
+      bodyFn: (g, ex) => {
+        const b = {};
+        if (ex.v4cu_title) b.title = ex.v4cu_title;
+        if (ex.v4cu_tier) b.accessTier = ex.v4cu_tier;
+        return b;
+      }
+    },
+    { method: "DELETE", path: "/v4/content/{id}", summary: "Delete content", desc: "Removes the item from the knowledge base and unlearns it asynchronously. <strong>Real knowledge loss &mdash; there is no undo.</strong>",
+      danger: "destructive",
+      pathParams: [{ name: "id", desc: "Content UUID" }],
+      extra: [{ id: "v4cx_id", placeholder: "content_id", label: "Content ID" }],
+      pathFn: (g, ex) => `/v4/content/${ex.v4cx_id || "<content_id>"}`
+    },
+  ]},
+
+  { section: "Generate & Send", endpoints: [
+    { method: "POST", path: "/v4/generate", summary: "Generate in the mind's voice", desc: "One reply in the owner's voice. <strong><code>includeKnowledgeBase</code> is accepted but ignored</strong> &mdash; this path does no retrieval. For knowledge-grounded answers use V3 <code>/v3/search/query</code> or <code>/v3/agent/run</code>. Metered by a daily budget enforced per <em>owner</em> (not per key); it degrades closed with a 503 rather than generating un-metered. Reusing an <code>idempotencyKey</code> replays the original reply without spending budget.",
+      danger: "metered",
+      body: [
+        { name: "prompt", type: "string", req: true, desc: "Instruction (1-8000)" },
+        { name: "idempotencyKey", type: "string", req: false, desc: "Reuse to replay instead of re-charging" },
+      ],
+      extra: [
+        { id: "v4g_prompt", placeholder: "Draft a warm one-line thank-you.", label: "Prompt" },
+        { id: "v4g_idem", placeholder: "idempotencyKey", label: "Idempotency Key", req: false },
+      ],
+      bodyFn: (g, ex) => {
+        const b = { prompt: ex.v4g_prompt || "Draft a warm one-line thank-you." };
+        if (ex.v4g_idem) b.idempotencyKey = ex.v4g_idem;
+        return b;
+      }
+    },
+    { method: "POST", path: "/v4/send", summary: "Send SMS/email as the mind", desc: "<strong>Delivers a real message to a real person.</strong> Consent is enforced server-side against the contact's own per-channel opt-in flag; an opted-out contact returns 422 <code>consent_rejected</code>. A 200 does <em>not</em> mean delivered &mdash; branch on <code>data.outcome</code>: <code>sent</code>, <code>carrier_failed</code>, or <code>generation_failed</code>.",
+      danger: "destructive",
+      body: [
+        { name: "contactId", type: "string", req: true, desc: "Contact to deliver to" },
+        { name: "channel", type: "string", req: true, desc: "sms | email" },
+        { name: "body", type: "string", req: true, desc: "Message body" },
+        { name: "idempotencyKey", type: "string", req: false, desc: "Dedupe handle" },
+      ],
+      extra: [
+        { id: "v4s_cid", placeholder: "contact_id", label: "Contact ID" },
+        { id: "v4s_chan", placeholder: "channel", label: "Channel", type: "select", options: ["email", "sms"] },
+        { id: "v4s_body", placeholder: "message body", label: "Body" },
+        { id: "v4s_idem", placeholder: "idempotencyKey", label: "Idempotency Key", req: false },
+      ],
+      bodyFn: (g, ex) => {
+        const b = { contactId: ex.v4s_cid || "<contact_id>", channel: ex.v4s_chan || "email", body: ex.v4s_body || "<message>" };
+        if (ex.v4s_idem) b.idempotencyKey = ex.v4s_idem;
+        return b;
+      }
+    },
+    { method: "POST", path: "/v4/notify-owner", summary: "Notify the mind owner", desc: "Freeform notification to the mind owner and editor collaborators. Subject and body are sanitized server-side. <strong>The recipient is always the key owner</strong> and is never read from the request body &mdash; it cannot be aimed at a third party.",
+      danger: "metered",
+      body: [
+        { name: "subject", type: "string", req: true, desc: "Subject (1-200)" },
+        { name: "body", type: "string", req: true, desc: "Body (1-1000)" },
+      ],
+      extra: [
+        { id: "v4n_subj", placeholder: "New high-intent lead", label: "Subject" },
+        { id: "v4n_body", placeholder: "A visitor asked about pricing.", label: "Body" },
+      ],
+      bodyFn: (g, ex) => ({ subject: ex.v4n_subj || "<subject>", body: ex.v4n_body || "<body>" })
+    },
+  ]},
+
+  { section: "LLM", endpoints: [
+    { method: "POST", path: "/v4/llm/chat/completions", summary: "OpenAI-compatible completion", desc: "Raw, <strong>voiceless</strong> completion &mdash; not the mind's voice (use <code>/v4/generate</code> for that). Point an unmodified OpenAI client at base URL <code>/v4/llm</code>. <code>model</code> is accepted but ignored; the response <code>model</code> is always <code>delphi-llm</code>. Synchronous only &mdash; <code>stream:true</code> and tool calling are <em>rejected</em>, not coerced. <strong>No <code>data</code> envelope</strong> &mdash; returns a raw OpenAI object.",
+      danger: "metered",
+      body: [
+        { name: "messages", type: "object[]", req: true, desc: "OpenAI chat messages" },
+        { name: "model", type: "string", req: false, desc: "Accepted but ignored" },
+      ],
+      extra: [{ id: "v4l_msg", placeholder: "Reply with exactly: OK", label: "User Message" }],
+      bodyFn: (g, ex) => ({ messages: [{ role: "user", content: ex.v4l_msg || "Reply with exactly: OK" }] })
+    },
+  ]},
+
+  { section: "Thread Sessions", endpoints: [
+    { method: "GET", path: "/v4/thread-sessions/{threadSessionId}/contact", summary: "Resolve session contact", desc: "Resolve a thread session to its owner-scoped contact. Useful for turning a webhook payload into a contact.",
+      pathParams: [{ name: "threadSessionId", desc: "Thread session UUID" }],
+      extra: [{ id: "v4ts_id", placeholder: "thread_session_id", label: "Thread Session ID" }],
+      pathFn: (g, ex) => `/v4/thread-sessions/${ex.v4ts_id || "<thread_session_id>"}/contact`
+    },
+    { method: "GET", path: "/v4/thread-sessions/{threadSessionId}/transcript", summary: "Get session transcript", desc: "Transcript messages within a completed thread session.",
+      pathParams: [{ name: "threadSessionId", desc: "Thread session UUID" }],
+      extra: [{ id: "v4tt_id", placeholder: "thread_session_id", label: "Thread Session ID" }],
+      pathFn: (g, ex) => `/v4/thread-sessions/${ex.v4tt_id || "<thread_session_id>"}/transcript`
+    },
+  ]},
+
+  { section: "Webhooks", endpoints: [
+    { method: "GET", path: "/v4/webhook-subscriptions", summary: "List webhook subscriptions", desc: "Response nests: <code>{data:{subscriptions:[...]}}</code>. No V3 equivalent." },
+    { method: "POST", path: "/v4/webhook-subscriptions", summary: "Create webhook subscription", desc: "Target URL is validated for SSRF safety. <strong>Creating the first subscription reveals the account signing secret once</strong> if no active secret exists &mdash; capture it then; treat it as a credential.",
+      danger: "destructive",
+      body: [
+        { name: "targetUrl", type: "string", req: true, desc: "Destination HTTPS URL" },
+        { name: "eventType", type: "string", req: false, desc: "One of 9 event types" },
+        { name: "name", type: "string", req: false, desc: "Subscription name" },
+        { name: "jmespathFilter", type: "string", req: false, desc: "Send-vs-skip predicate; empty delivers all" },
+      ],
+      extra: [
+        { id: "v4w_url", placeholder: "https://example.com/hook", label: "Target URL" },
+        { id: "v4w_evt", placeholder: "eventType", label: "Event Type", type: "select", options: ["thread-session-ended", "chat-visitor-message-sent", "contact-created", "contact-updated", "contact-deleted", "alert-occurrence-created", "affiliate-product-mention-created", "phone-number-captured", "contact-inactivity-threshold-crossed"] },
+        { id: "v4w_name", placeholder: "name", label: "Name", req: false },
+        { id: "v4w_filter", placeholder: "jmespathFilter", label: "JMESPath Filter", req: false },
+      ],
+      bodyFn: (g, ex) => {
+        const b = { targetUrl: ex.v4w_url || "https://example.com/hook" };
+        if (ex.v4w_evt) b.eventType = ex.v4w_evt;
+        if (ex.v4w_name) b.name = ex.v4w_name;
+        if (ex.v4w_filter) b.jmespathFilter = ex.v4w_filter;
+        return b;
+      }
+    },
+    { method: "GET", path: "/v4/webhook-subscriptions/{id}", summary: "Get webhook subscription", desc: "Read a single webhook subscription.",
+      pathParams: [{ name: "id", desc: "Subscription UUID" }],
+      extra: [{ id: "v4wg_id", placeholder: "subscription_id", label: "Subscription ID" }],
+      pathFn: (g, ex) => `/v4/webhook-subscriptions/${ex.v4wg_id || "<subscription_id>"}`
+    },
+    { method: "PUT", path: "/v4/webhook-subscriptions/{id}", summary: "Update webhook subscription", desc: "Update name, target URL, event type, or filter. A new target URL is re-validated for SSRF safety.",
+      danger: "destructive",
+      pathParams: [{ name: "id", desc: "Subscription UUID" }],
+      body: [
+        { name: "targetUrl", type: "string", req: false, desc: "New destination URL" },
+        { name: "name", type: "string", req: false, desc: "New name" },
+      ],
+      extra: [
+        { id: "v4wu_id", placeholder: "subscription_id", label: "Subscription ID" },
+        { id: "v4wu_url", placeholder: "https://example.com/hook", label: "Target URL", req: false },
+        { id: "v4wu_name", placeholder: "name", label: "Name", req: false },
+      ],
+      pathFn: (g, ex) => `/v4/webhook-subscriptions/${ex.v4wu_id || "<subscription_id>"}`,
+      bodyFn: (g, ex) => {
+        const b = {};
+        if (ex.v4wu_url) b.targetUrl = ex.v4wu_url;
+        if (ex.v4wu_name) b.name = ex.v4wu_name;
+        return b;
+      }
+    },
+    { method: "DELETE", path: "/v4/webhook-subscriptions/{id}", summary: "Delete webhook subscription", desc: "Soft-delete a webhook subscription.",
+      danger: "destructive",
+      pathParams: [{ name: "id", desc: "Subscription UUID" }],
+      extra: [{ id: "v4wx_id", placeholder: "subscription_id", label: "Subscription ID" }],
+      pathFn: (g, ex) => `/v4/webhook-subscriptions/${ex.v4wx_id || "<subscription_id>"}`
+    },
+  ]},
+
+  { section: "Integrations", endpoints: [
+    { method: "GET", path: "/v4/integrations", summary: "List integrations", desc: "Cursor-paginated integration deployments. Integrations run bundled JS on Cloudflare, triggered by Delphi events or cron. <strong>Only read operations are exposed here</strong> &mdash; publish/push/activate/delete and secret writes deploy or tear down live code and should be run deliberately, not from a docs page.",
+      query: [{ name: "limit", type: "integer", req: false, desc: "1-200 (default 50)" }],
+      extra: [{ id: "v4i_lim", placeholder: "50", label: "Limit", type: "integer", req: false }],
+      queryFn: (g, ex) => `?limit=${ex.v4i_lim || "50"}`
+    },
+    { method: "GET", path: "/v4/integrations/{id}", summary: "Get integration", desc: "One deployment including advisory audit findings. The raw code bundle is never returned on this shape. Note the advisory audit <strong>never gates a deploy</strong> &mdash; a clean audit is not a safety guarantee.",
+      pathParams: [{ name: "id", desc: "Integration deployment ID" }],
+      extra: [{ id: "v4ig_id", placeholder: "integration_id", label: "Integration ID" }],
+      pathFn: (g, ex) => `/v4/integrations/${ex.v4ig_id || "<integration_id>"}`
+    },
+    { method: "GET", path: "/v4/integrations/by-slug/{slug}", summary: "Get integration by slug", desc: "Resolve a deployment by its owner-unique slug (the integration <code>name</code>).",
+      pathParams: [{ name: "slug", desc: "Owner-unique slug" }],
+      extra: [{ id: "v4is_slug", placeholder: "scheduled-followup", label: "Slug" }],
+      pathFn: (g, ex) => `/v4/integrations/by-slug/${encodeURIComponent(ex.v4is_slug || "<slug>")}`
+    },
+    { method: "GET", path: "/v4/integrations/{id}/triggers", summary: "Read integration triggers", desc: "Event subscriptions and per-event JMESPath filters that trigger this integration.",
+      pathParams: [{ name: "id", desc: "Integration deployment ID" }],
+      extra: [{ id: "v4it_id", placeholder: "integration_id", label: "Integration ID" }],
+      pathFn: (g, ex) => `/v4/integrations/${ex.v4it_id || "<integration_id>"}/triggers`
+    },
+    { method: "GET", path: "/v4/integrations/{id}/secrets", summary: "List secret names", desc: "Required and stored runtime secret <em>names</em> only. Plaintext values are never returned.",
+      pathParams: [{ name: "id", desc: "Integration deployment ID" }],
+      extra: [{ id: "v4ix_id", placeholder: "integration_id", label: "Integration ID" }],
+      pathFn: (g, ex) => `/v4/integrations/${ex.v4ix_id || "<integration_id>"}/secrets`
+    },
+    { method: "GET", path: "/v4/integrations/{id}/log", summary: "Browse event delivery log", desc: "Keyset-paginated delivery log for the private webhook that triggers this integration. Metadata is visible to any reader, but captured request/response bodies and headers are editor/owner-only. Returns <code>{data, response_metadata}</code> &mdash; not the usual <code>nextCursor</code> shape.",
+      pathParams: [{ name: "id", desc: "Integration deployment ID" }],
+      query: [
+        { name: "outcome", type: "string", req: false, desc: "skipped | delivered | failed" },
+        { name: "limit", type: "integer", req: false, desc: "1-200 (default 50)" },
+      ],
+      extra: [
+        { id: "v4il_id", placeholder: "integration_id", label: "Integration ID" },
+        { id: "v4il_out", placeholder: "outcome", label: "Outcome", type: "select", options: ["", "delivered", "failed", "skipped"], req: false },
+        { id: "v4il_lim", placeholder: "50", label: "Limit", type: "integer", req: false },
+      ],
+      pathFn: (g, ex) => `/v4/integrations/${ex.v4il_id || "<integration_id>"}/log`,
+      queryFn: (g, ex) => {
+        const p = new URLSearchParams();
+        p.set("limit", ex.v4il_lim || "50");
+        if (ex.v4il_out) p.set("outcome", ex.v4il_out);
+        return "?" + p.toString();
+      }
+    },
+  ]},
+
+  { section: "Data Deletion", endpoints: [
+    { method: "POST", path: "/v4/data-deletion-requests", summary: "Request contact data deletion", desc: "Queues deletion of that contact's conversations, audience profile, and visitor memory <strong>for this Delphi only</strong> &mdash; it does not touch their platform account or their relationships with other Delphis. Returns <code>202</code> (queued for administrator execution), not 200. <strong>Effectively irreversible.</strong>",
+      danger: "destructive",
+      body: [{ name: "email", type: "string", req: true, desc: "Email of the linked contact" }],
+      extra: [{ id: "v4dd_email", placeholder: "email", label: "Email", global: "userEmail" }],
+      bodyFn: (g, ex) => ({ email: ex.v4dd_email || "<email>" })
+    },
+  ]},
+];
+
+/* Active surface — swapped by switchVersion(). */
+let API_VERSION = "v3";
+let ENDPOINTS = ENDPOINTS_V3;
+
 /* ── Helpers ── */
 function $(sel, ctx) { return (ctx || document).querySelector(sel); }
 function globals() {
@@ -971,6 +1455,9 @@ let lookupTimer = null;
 
 async function lookupUser() {
   const g = globals();
+  // V3-only: this hits POST /v3/users/lookup, and a V3 user_id is a different
+  // namespace from a V4 contact id — auto-filling one into the other is wrong.
+  if (API_VERSION !== "v3") { clearResolvedUser(); return; }
   if (!g.apiKey || !g.userEmail) { clearResolvedUser(); return; }
 
   // Show loading state
@@ -1096,6 +1583,8 @@ function renderEndpoint(ep, idx) {
         <span class="endpoint-chevron">&#9654;</span>
       </div>
       <div class="endpoint-body">
+        ${ep.danger === "destructive" ? `<div class="danger-banner destructive"><span class="dot"></span><strong>Changes real state.</strong> This writes, deletes, or sends something a real person can see. Confirm before you press Send.</div>` : ``}
+        ${ep.danger === "metered" ? `<div class="danger-banner metered"><span class="dot"></span><strong>Metered.</strong> Safe to call, but it consumes budget, tokens, or sends a notification. Don't loop it.</div>` : ``}
         <div class="endpoint-section" style="color:var(--text-secondary);font-size:13px">${ep.desc}</div>
         ${renderParamsTable(ep.pathParams, "Path Parameters")}
         ${renderParamsTable(ep.query, "Query Parameters")}
@@ -1149,11 +1638,13 @@ function escCurl(s) { return escHtml(s); }
 
 function renderAll() {
   let mainHtml = "", sideHtml = "", idx = 0;
+  flatEps = [];
   ENDPOINTS.forEach(sec => {
     const secId = sec.section.toLowerCase().replace(/\s+/g, "-");
     mainHtml += `<h2 class="section-title" id="sec-${secId}">${sec.section}</h2>`;
     sideHtml += `<h3>${sec.section}</h3>`;
     sec.endpoints.forEach(ep => {
+      flatEps.push(ep);
       mainHtml += renderEndpoint(ep, idx);
       const m = ep.method.toLowerCase();
       sideHtml += `<a href="#ep-${idx}"><span class="method-dot" style="background:var(--${m})"></span>${ep.summary}</a>`;
@@ -1195,8 +1686,26 @@ function renderAll() {
 }
 
 /* ── Interactions ── */
-let flatEps = [];
-ENDPOINTS.forEach(s => s.endpoints.forEach(e => flatEps.push(e)));
+let flatEps = [];   // rebuilt by renderAll() so a version switch stays in sync
+
+function switchVersion(v) {
+  if (v === API_VERSION) return;
+  API_VERSION = v;
+  ENDPOINTS = (v === "v4") ? ENDPOINTS_V4 : ENDPOINTS_V3;
+  document.querySelectorAll(".ver-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.ver === v);
+  });
+  // V3 user_id lookup doesn't apply to V4 (contact IDs are a different namespace)
+  clearResolvedUser();
+  const n = ENDPOINTS.reduce((a, s) => a + s.endpoints.length, 0);
+  $id("apiTitle").textContent = `Delphi ${v.toUpperCase()} API Reference`;
+  $id("apiSubtitle").innerHTML = (v === "v4")
+    ? `Developer Platform &mdash; contacts, knowledge-base writes, outbound messaging, webhooks, integrations. ${n} endpoints. <strong>No chat, voice, or search here</strong> &mdash; those live in V3.`
+    : `Interactive endpoint explorer &mdash; ${n} endpoints, zero dependencies. Fill in your API key above to enable live testing.`;
+  $id("logoVer").textContent = v.toUpperCase() + " API";
+  renderAll();
+  window.scrollTo({ top: 0 });
+}
 
 function toggleEp(idx) {
   const card = $id("ep-" + idx);
@@ -2123,6 +2632,8 @@ function formatPaste(idx) {
 
 /* ── Init ── */
 renderAll();
+// Keep the endpoint count honest instead of hardcoding it in the markup.
+$id("apiSubtitle").innerHTML = `Interactive endpoint explorer &mdash; ${flatEps.length} endpoints, zero dependencies. Fill in your API key above to enable live testing.`;
 
 // Persist inputs to localStorage
 ["apiKey", "userEmail"].forEach(id => {

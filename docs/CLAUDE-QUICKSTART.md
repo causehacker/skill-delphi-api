@@ -52,6 +52,32 @@ User email for lookup: <real email>
 Read-only only.
 ```
 
+## Step 6) V4 Developer Platform (contacts, content, webhooks)
+
+V4 is a **separate surface** from V3 — it has no chat, streaming, voice, or
+search. Reach for it when you want to manage contacts, write to the knowledge
+base, or wire up webhooks.
+
+```text
+Goal: V4 read-only sweep.
+API key: <paste key>
+Read-only only.
+```
+
+Useful V4 asks:
+
+```text
+Add this Q&A pair to my knowledge base: "<question>" / "<answer>"
+```
+
+```text
+How many contacts do I have, and which ones haven't interacted in 90 days?
+```
+
+Claude will confirm before anything that changes real state — V4 can send a real
+SMS or email (`/v4/send`), delete knowledge (`DELETE /v4/content/{id}`), or
+deploy live code (integrations). Those always need your explicit go-ahead.
+
 ## Optional local one-command run
 
 If you run locally in terminal:

@@ -1,6 +1,8 @@
 # Delphi API Safe Skill
 
-A production-ready, non-technical-safe skill package for testing and troubleshooting Delphi **V3** API conversation + streaming flows.
+A production-ready, non-technical-safe skill package for testing and troubleshooting the Delphi **V3** API (conversations, streaming, voice, knowledge-base search) and the Delphi **V4** Developer Platform API (contacts, knowledge-base writes, outbound messaging, webhooks, integrations).
+
+> **V3 and V4 are complementary, not sequential.** V4 does *not* contain V3's chat, stream, voice, or search endpoints, and V3 has none of V4's contacts, content-write, or webhook endpoints. Don't plan a migration — pick the surface that has the endpoint you need. See [`delphi-api-safe/references/v4-endpoints.md`](delphi-api-safe/references/v4-endpoints.md) for the full V4 map.
 
 ## What this is
 
@@ -16,7 +18,8 @@ This repo contains:
 
 ## What this skill does
 
-- Runs safe Delphi V3 checks for conversation, stream, search, users, tags, and user info endpoints
+- Runs safe Delphi V3 checks for conversation, stream, search, agent, users, tags, and user info endpoints
+- Runs safe Delphi V4 checks for profile, contacts, content, integrations, and webhook endpoints — read-only by default, with destructive endpoints (`/v4/send`, `/v4/data-deletion-requests`, content delete, integration publish) deliberately excluded from the harness
 - Handles self-discovery first, then asks for missing required inputs
 - Never invents sensitive/user-specific values (emails, API keys)
 - Produces pass/fail matrices and incident-ready reports
@@ -108,9 +111,33 @@ python3 delphi-api-safe/scripts/test_delphi_v3.py \
   --search-query "What is your background?"
 ```
 
+### V4 Developer Platform tests
+
+Read-only by default — safe to run against production:
+
+```bash
+python3 delphi-api-safe/scripts/test_delphi_v4.py --api-key "$DELPHI_API_KEY"
+```
+
+Include the two metered endpoints (daily budget / token spend). Reusing the same
+`--idempotency-key` across runs replays the prior reply instead of re-charging:
+
+```bash
+python3 delphi-api-safe/scripts/test_delphi_v4.py \
+  --api-key "$DELPHI_API_KEY" \
+  --test-generate --idempotency-key "smoke-2026-08-01" \
+  --test-llm
+```
+
+The V4 harness deliberately does **not** implement `/v4/send`,
+`/v4/data-deletion-requests`, content deletes, integration publish/push, or
+secret writes — those mutate real-world state and should be run by hand.
+
 ## Interactive API Reference (browser)
 
-A single-page interactive explorer for all 25 V3 endpoints with a live test harness, streaming SSE support, and curl copy/paste.
+A single-page interactive explorer with a **V3 / V4 toggle** in the top bar —
+29 V3 endpoints and 42 V4 endpoints — with a live test harness, streaming SSE
+support, and curl copy/paste.
 
 ### Quick start
 
@@ -128,8 +155,11 @@ python3 docs/serve.py --port 9000  # custom port
 
 ### What it does
 
-- **24 endpoint cards** organized by section (Conversations, Questions, Users, Tags, User Info, Search, Clone, Voice)
-- **Send button** fires requests through a local CORS proxy — responses render inline
+- **V3 / V4 toggle** in the top bar — switches the whole explorer between the two surfaces
+- **V3: 29 endpoint cards** (Conversations, Questions, Users, Tags, User Info, Search, Clone, Voice)
+- **V4: 42 endpoint cards** (Profile, Contacts, Contact Tags, Contact Properties, Content, Generate & Send, LLM, Thread Sessions, Webhooks, Integrations, Data Deletion)
+- **Safety banners on V4** — endpoints that change real state (send, delete, publish) get a red warning; metered ones (generate, LLM) get an amber one
+- **Send button** fires requests through a local CORS proxy — responses render inline. The proxy is version-agnostic, so `/api/v3/*` and `/api/v4/*` both work
 - **SSE streaming** for `/v3/stream` — tokens appear live with a blinking cursor, token counter, and raw SSE toggle
 - **Curl copy** on every endpoint — one click to clipboard, ready to paste in terminal
 - **Auto user lookup** — enter an email in the top bar and the `user_id` auto-resolves and fills into all endpoint cards

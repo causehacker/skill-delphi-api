@@ -16,6 +16,12 @@ make docs
 
 Enter your API key and optionally a user email in the top bar. Open any endpoint card and click **Send** to fire a live request. The `/v3/stream` endpoint streams tokens in real-time with a blinking cursor. See `README.md` for full details.
 
+Use the **V3 / V4 toggle** in the top bar to switch surfaces. V3 has the
+conversational endpoints (chat, stream, voice, search); V4 has the Developer
+Platform (contacts, knowledge-base writes, outbound messaging, webhooks,
+integrations). V4 endpoints that change real state carry a red warning banner —
+read it before pressing Send.
+
 ## CLI usage
 
 ## Minimum info the skill needs (when using Claude)
@@ -127,6 +133,31 @@ make smoke-search
   - `POST/DELETE /v3/users/{user_id}/tags/{tag_name}`
   - `POST/PATCH/DELETE /v3/users/{user_id}/info...`
   - `GET /v3/users` (paginated user list)
+
+## V4 endpoint coverage (`test_delphi_v4.py`)
+
+Read-only by default — safe against production:
+
+```bash
+python3 delphi-api-safe/scripts/test_delphi_v4.py --account <name>
+```
+
+- `GET /v4/profile`, `/v4/profile/questions`, `/v4/profiles/{username}`
+- `GET /v4/contacts`, `/v4/contacts/{id}`, `/v4/contacts/{id}/threads`
+- `GET /v4/contact-tags`, `/v4/contact-properties/definitions`
+- `GET /v4/content`, `/v4/content/{id}`
+- `GET /v4/integrations`, `/v4/webhook-subscriptions`
+- opt-in metered: `POST /v4/generate` (`--test-generate`), `POST /v4/llm/chat/completions` (`--test-llm`)
+
+**Deliberately not implemented** — these mutate real-world state and must be run
+by hand with the user watching: `POST /v4/send` (real SMS/email),
+`POST /v4/data-deletion-requests` (irreversible), `DELETE /v4/content/{id}`
+(knowledge loss), integration publish/push/activate (deploys live code), and
+integration secret writes.
+
+The script also reports whether the key carries the `contacts:list:pii` scope —
+without it, contact rows come back with no `email` or `phone`, which looks like
+missing data but is a scope difference.
 
 ## PASS/FAIL criteria
 

@@ -1,13 +1,14 @@
-.PHONY: help setup smoke smoke-search smoke-full package docs docs-stop
+.PHONY: help setup smoke smoke-search smoke-full smoke-v4 package docs docs-stop
 
 help:
 	@echo "Commands:"
 	@echo "  make setup        # Interactive wizard to create smoke-config.json"
-	@echo "  make smoke        # Chat-only health check using smoke-config.json"
-	@echo "  make smoke-search # Chat + knowledge base search tests"
-	@echo "  make smoke-full   # Full endpoint check using smoke-config.json"
+	@echo "  make smoke        # V3 chat-only health check using smoke-config.json"
+	@echo "  make smoke-search # V3 chat + knowledge base search tests"
+	@echo "  make smoke-full   # V3 full endpoint check using smoke-config.json"
+	@echo "  make smoke-v4     # V4 Developer Platform check (read-only by default)"
 	@echo "  make package      # Rebuild dist/delphi-api-safe.skill"
-	@echo "  make docs         # Start interactive API reference at localhost:8787"
+	@echo "  make docs         # Start interactive API reference (V3 + V4) at localhost:8787"
 	@echo "  make docs-stop    # Stop the API reference server"
 
 setup:
@@ -21,6 +22,9 @@ smoke-search:
 
 smoke-full:
 	python3 scripts/run_smoke.py --config smoke-config.json --mode full
+
+smoke-v4:
+	python3 scripts/run_smoke.py --config smoke-config.json --api v4
 
 package:
 	/Users/jc3/.openclaw/workspace/.venv-skillpack/bin/python /opt/homebrew/lib/node_modules/openclaw/skills/skill-creator/scripts/package_skill.py ./delphi-api-safe ./dist

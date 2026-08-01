@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-Local proxy server for the Delphi V3 API Reference page.
+Local proxy server for the Delphi API Reference page (V3 and V4).
 
 Serves api-reference.html and proxies /api/* requests to https://api.delphi.ai/*,
 bypassing CORS restrictions so the Send buttons work in the browser.
+
+The proxy is version-agnostic: it forwards whatever follows /api, so
+/api/v3/... and /api/v4/... both work with no routing changes. Only V3 has
+streaming endpoints, which get the SSE/binary handlers below.
 
 Usage:
     python3 docs/serve.py            # default port 8787
@@ -232,10 +236,10 @@ def main():
     args = ap.parse_args()
 
     server = http.server.HTTPServer(("127.0.0.1", args.port), ProxyHandler)
-    print(f"\n  \033[1mDelphi V3 API Reference\033[0m")
+    print(f"\n  \033[1mDelphi API Reference \033[0m\033[90m(V3 + V4)\033[0m")
     print(f"  \033[32m→\033[0m http://localhost:{args.port}/api-reference.html")
     print(f"  \033[32m→\033[0m http://localhost:{args.port}/voice-tester.html")
-    print(f"  \033[90mProxy: /api/* → {DELPHI_BASE}/*\033[0m")
+    print(f"  \033[90mProxy: /api/* → {DELPHI_BASE}/*  (v3 + v4)\033[0m")
     print(f"  \033[90mPress Ctrl+C to stop\033[0m\n")
 
     try:

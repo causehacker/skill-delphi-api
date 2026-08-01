@@ -1,16 +1,36 @@
 ---
 name: delphi-api-safe
-description: Safely operate and troubleshoot Delphi V3 API conversations, streaming, voice, and clone endpoints for technical and non-technical users. Use when a user asks to test Delphi API keys, run pass/fail checks across accounts, generate curl commands, debug HTTP 4xx/5xx errors, or prepare incident reports. Also use for audience and engagement analytics — sizing an audience ("how many users", "how many real emails", filtering out test/fake accounts) and measuring conversation retention ("retention", "return rate", "how many users came back", "how many have had conversations", repeat-visit and churn analysis from conversation data). Also trigger when the user says things like "is my clone working", "test this key", "run a smoke test", "check my Delphi", "new Delphi for [name]", "evaluate retention", or shares a dsk- API key and wants to verify it. If the user pastes a Delphi API key or mentions Delphi clones in any testing, troubleshooting, or audience-analytics context, use this skill.
+description: Safely operate and troubleshoot the Delphi V3 API (conversations, streaming, voice, clone, knowledge-base search) and the Delphi V4 Developer Platform API (contacts/CRM, knowledge-base writes, outbound SMS/email, webhooks, integrations, OpenAI-compatible LLM) for technical and non-technical users. Use when a user asks to test Delphi API keys, run pass/fail checks across accounts, generate curl commands, debug HTTP 4xx/5xx errors, or prepare incident reports. Also use for audience and engagement analytics — sizing an audience ("how many users", "how many real emails", filtering out test/fake accounts) and measuring conversation retention ("retention", "return rate", "how many users came back", "how many have had conversations", repeat-visit and churn analysis from conversation data). Also trigger when the user says things like "is my clone working", "test this key", "run a smoke test", "check my Delphi", "new Delphi for [name]", "evaluate retention", "v4", "contacts", "upsert a contact", "add to the knowledge base", "set up a webhook", or shares a dsk- or dlph_ API key and wants to verify it. If the user pastes a Delphi API key or mentions Delphi clones, minds, or contacts in any testing, troubleshooting, or audience-analytics context, use this skill.
 ---
 
 # Delphi API Safe
 
-Run Delphi V3 API tests in a non-destructive, user-safe way. Prefer reproducible checks and clear pass/fail outputs.
+Run Delphi API tests in a non-destructive, user-safe way. Prefer reproducible checks and clear pass/fail outputs.
+
+Delphi exposes **two live API surfaces**. They are complementary, not
+sequential — see "Choosing V3 vs V4" below before picking one.
+
+| | V3 — "Delphi External API" | V4 — "Delphi Developer Platform API" |
+|---|---|---|
+| Base | `https://api.delphi.ai/v3` | `https://api.delphi.ai/v4` |
+| Covers | chat, SSE streaming, voice, KB search, agent, users, tags | contacts/CRM, KB **writes**, outbound SMS/email, webhooks, integrations, LLM passthrough |
+| Envelope | bare objects | `{"data": ...}` (not uniform — check per endpoint) |
+| Errors | `{"detail": "..."}` | `{"type","code","message"}` |
+| Casing | `snake_case` | `camelCase` |
+| Reference | `references/v3-endpoints.md` | `references/v4-endpoints.md` |
+
+The same `x-api-key` works on both (verified) — a V3 `dsk-` key returns 200 on
+V4 read endpoints. V4 additionally documents a **scoped-key model**, so a `403`
+on V4 often means a missing scope rather than a dead key.
 
 ## Core rules
 
-- Use **V3 endpoints only**. Rate limit: 120 requests per 60 seconds per key.
-  Supported/tested coverage includes:
+- Pick the surface deliberately, then stay on it — **V4 does not contain V3's
+  chat/voice/search endpoints, and V3 has none of V4's contacts/content/webhook
+  endpoints.** Neither is a superset.
+- V3 rate limit: 120 requests per 60 seconds per key. **V4 publishes no numeric
+  rate limit** — pace conservatively.
+  Supported/tested V3 coverage includes:
   - **Clone**: `GET /v3/clone` — clone profile and identity discovery
   - **Conversations**:
     - `POST /v3/conversation` — create a conversation
@@ -47,11 +67,61 @@ Run Delphi V3 API tests in a non-destructive, user-safe way. Prefer reproducible
     - `POST /v3/search/query` — semantic + keyword search across clone's knowledge base
     - `POST /v3/search/content` — search content sources by title or description
   - **Agent**: `POST /v3/agent/run` — autonomous knowledge-base agent; takes an `objective` and returns a synthesized `finalResult` plus a reasoning trace, rather than raw chunks. Heavier than search — use it when the user wants a synthesized answer or multi-hop reasoning, not a chunk lookup.
-- See `references/v3-endpoints.md` for request/response expectations and known quirks.
+
+  Supported/tested **V4** coverage (58 operations; full detail in `references/v4-endpoints.md`):
+  - **Profiles**: `GET /v4/profile` (identity discovery — the V4 analogue of `/v3/clone`), `GET /v4/profile/questions` (replaces `/v3/questions`), `GET /v4/profiles/{username}`
+  - **Contacts** (the V4 evolution of `/v3/users`):
+    - `GET /v4/contacts` — cohort list with far richer server-side filtering (search, tags, access tier, opt-in, interaction counts, date ranges, sort)
+    - `POST /v4/contacts` — **email-keyed upsert that returns `wasCreated`**, removing the insert-vs-match ambiguity of `/v3/users/lookup`
+    - `GET /v4/contacts/{id}`, `PATCH /v4/contacts/{id}` (access tier only)
+    - `GET /v4/contacts/{id}/threads` — conversations with narrative summaries
+  - **Contact tags**: `GET|POST /v4/contact-tags`, assign/unassign per contact, `POST /v4/contacts/bulk/tags` (bulk add/remove by IDs or filter)
+  - **Contact properties**: custom owner-defined fields — definitions + per-contact values (no V3 equivalent)
+  - **Content (knowledge-base writes)**: `GET|POST /v4/content`, `GET|PATCH|DELETE /v4/content/{id}` — create QA pairs, notes, and URLs; editing a body **re-learns** it. V3 could only *search* content.
+  - **Generate / Send / Notify**: `POST /v4/generate` (owner-voice text, **no retrieval**, daily owner budget), `POST /v4/send` (**real SMS/email to a contact**), `POST /v4/notify-owner`
+  - **LLM**: `POST /v4/llm/chat/completions` — OpenAI-compatible, voiceless, non-streaming
+  - **Webhooks**: `GET|POST /v4/webhook-subscriptions`, `GET|PUT|DELETE /v4/webhook-subscriptions/{id}` — 9 event types
+  - **Integrations** (21 ops): deploy bundled code triggered by events or cron — lifecycle, source, secrets, triggers, delivery log
+  - **Data deletion**: `POST /v4/data-deletion-requests` — irreversible, queues contact data deletion
+- See `references/v3-endpoints.md` and `references/v4-endpoints.md` for request/response expectations and known quirks.
 - Never invent user data (emails, API keys, clone names, webhook URLs). Users often share test output with teammates or paste it into tickets — invented data causes confusion and erodes trust.
 - If a required field is missing, ask a direct question before proceeding.
 - Treat API keys as sensitive secrets. Redact keys in user-visible output (e.g., `dsk-****WmQ`) or use `$DELPHI_API_KEY`. Users frequently share screens or copy chat logs, so a leaked key can be exploited within minutes. Don't echo raw keys back, even if the user provided them — the output may end up somewhere the user didn't intend.
 - For non-technical users, provide copy-paste commands and plain-English interpretation.
+- **V4 raises the blast radius of a mistake.** The worst accidental V3 write
+  renamed a user; V4 can message a real person, delete knowledge, or deploy
+  code. Never call these without explicit, per-call user confirmation:
+  `POST /v4/send` · `POST /v4/data-deletion-requests` · `DELETE /v4/content/{id}` ·
+  any integrations publish/activate/push/delete · `PUT /v4/integrations/{id}/secrets/{name}`.
+  Treat `POST /v4/generate` and `POST /v4/llm/chat/completions` as metered — safe
+  but not free.
+
+## Choosing V3 vs V4
+
+Ask what the user is trying to *do*, then route:
+
+| The user wants to… | Surface | Endpoint |
+|---|---|---|
+| Chat / stream a reply, test a clone works | **V3** | `/v3/conversation` + `/v3/stream` |
+| Voice audio or TTS | **V3** | `/v3/voice/*` |
+| Search or reason over the knowledge base | **V3** | `/v3/search/query`, `/v3/agent/run` |
+| Audience sizing / retention analytics | **V3** | `/v3/users` + `/v3/conversation/list` (`scripts/audience_audit.py`) |
+| Add / edit / delete knowledge-base content | **V4** | `/v4/content` |
+| Manage contacts, custom fields, segments | **V4** | `/v4/contacts`, `/v4/contact-properties/*`, `/v4/contacts/bulk/tags` |
+| Create a contact and know if it was new | **V4** | `POST /v4/contacts` → `wasCreated` |
+| Text or email a contact | **V4** | `/v4/send` (consent enforced server-side) |
+| React to Delphi events | **V4** | `/v4/webhook-subscriptions` or `/v4/integrations` |
+| Use Delphi as a plain LLM | **V4** | `/v4/llm/chat/completions` |
+
+Rules of thumb:
+
+- **Anything conversational is V3.** V4 has no chat, stream, voice, or search.
+- **Anything that writes to the knowledge base or the audience is V4.**
+- When a task spans both (e.g. "find users who churned, then email them"),
+  use V3 for the analysis and V4 for the action — and say so explicitly, so the
+  user knows two surfaces are involved.
+- Don't migrate working V3 code to V4 for its own sake. There is no V4
+  equivalent for most of it.
 
 ## Clone discovery
 
@@ -260,6 +330,76 @@ curl -sS -X POST "https://api.delphi.ai/v3/agent/run" \
   -H "x-api-key: $DELPHI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"objective": "<question or task>", "thinking_time": 10}'
+```
+
+## Standard commands (V4)
+
+All V4 responses wrap in `{"data": ...}` unless noted. Errors are
+`{"type","code","message"}`, not V3's `{"detail"}`.
+
+### Identity check (V4 equivalent of the clone check)
+
+```bash
+curl -sS "https://api.delphi.ai/v4/profile" \
+  -H "x-api-key: $DELPHI_API_KEY"
+```
+
+### List contacts (cursor-paginated, limit max 200)
+
+```bash
+curl -sS "https://api.delphi.ai/v4/contacts?limit=50&sort=lastActive&direction=desc" \
+  -H "x-api-key: $DELPHI_API_KEY"
+```
+
+### Upsert a contact — tells you whether it was created
+
+```bash
+curl -sS -X POST "https://api.delphi.ai/v4/contacts" \
+  -H "x-api-key: $DELPHI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "<email>", "name": "<name>", "tags": ["<tag>"]}'
+# -> {"data":{"contactId":"...","wasCreated":true|false}}
+```
+
+### Add a Q&A pair to the knowledge base (async — poll for COMPLETE)
+
+```bash
+curl -sS -X POST "https://api.delphi.ai/v4/content" \
+  -H "x-api-key: $DELPHI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"items": [{"type": "qa", "question": "<q>", "answer": "<a>"}]}'
+```
+
+```bash
+curl -sS "https://api.delphi.ai/v4/content/<content_id>" \
+  -H "x-api-key: $DELPHI_API_KEY"
+```
+
+### Generate in the mind's voice (metered; idempotency key makes retries safe)
+
+```bash
+curl -sS -X POST "https://api.delphi.ai/v4/generate" \
+  -H "x-api-key: $DELPHI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "<instruction>", "idempotencyKey": "<unique-id>"}'
+# -> {"data":{"text":"...","budgetRemaining":9999,"replayed":false}}
+```
+
+### OpenAI-compatible completion (no `data` envelope — raw OpenAI shape)
+
+```bash
+curl -sS -X POST "https://api.delphi.ai/v4/llm/chat/completions" \
+  -H "x-api-key: $DELPHI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "<prompt>"}]}'
+```
+
+### Fetch either spec (both require a valid key)
+
+```bash
+curl -sS "https://api.delphi.ai/v4/openapi.json" \
+  -H "x-api-key: $DELPHI_API_KEY" \
+  -A "delphi-api-safe/1.0"
 ```
 
 ## Non-technical UX rules
