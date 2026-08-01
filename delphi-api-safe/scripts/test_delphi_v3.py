@@ -389,6 +389,37 @@ def test_search_content(api_key: str, query: str) -> Dict[str, Any]:
     }
 
 
+def test_agent_run(api_key: str, objective: str, thinking_time: int = 10) -> Dict[str, Any]:
+    """Test the autonomous knowledge-base agent via POST /v3/agent/run.
+
+    Heavier/slower than /v3/search/query — it fans out across passages,
+    concepts, titles, and Q&A pairs, then synthesizes a finalResult with a
+    reasoning trace (steps[]), rather than returning raw chunks.
+    """
+    a_status, a_body = http_json(
+        "POST", "/agent/run", api_key,
+        {"objective": objective, "thinking_time": thinking_time},
+        max_time=max(30, thinking_time + 20),
+    )
+    final_result, step_count = "", 0
+    if a_status == "200":
+        try:
+            data = json.loads(a_body)
+            final_result = data.get("finalResult", "") or ""
+            step_count = len(data.get("steps", []) or [])
+        except Exception:
+            pass
+
+    a_ok = a_status == "200" and bool(final_result)
+    return {
+        "agent_run": "PASS" if a_ok else "FAIL",
+        "agent_run_http": a_status,
+        "step_count": step_count,
+        "final_result_preview": final_result[:200],
+        "note": "" if a_ok else (f"agent/run http {a_status}" if a_status != "200" else "no finalResult in response"),
+    }
+
+
 def test_user_endpoints(api_key: str, user_id: str, allow_write: bool, tag_name: Optional[str], info_text: Optional[str]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
 
@@ -493,7 +524,7 @@ def summarize(result: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Delphi V3 tester (clone + chat + voice + search + users + tags + info + conversations + questions)")
+    ap = argparse.ArgumentParser(description="Delphi V3 tester (clone + chat + voice + search + agent + users + tags + info + conversations + questions)")
     ap.add_argument("--api-key", required=True)
     ap.add_argument("--account", default="Account")
     ap.add_argument("--message", default="Please answer in one short sentence to test stream.")
@@ -506,6 +537,9 @@ def main() -> None:
     ap.add_argument("--test-voice", action="store_true", help="Include voice streaming test")
     ap.add_argument("--test-search", action="store_true", help="Include knowledge base search tests")
     ap.add_argument("--search-query", default="What is your background?", help="Query string for search tests")
+    ap.add_argument("--test-agent", action="store_true", help="Include the knowledge-base agent test (POST /v3/agent/run — slower/heavier than search)")
+    ap.add_argument("--agent-objective", default="Summarize the key themes covered in the knowledge base.", help="Objective string for the agent/run test")
+    ap.add_argument("--agent-thinking-time", type=int, default=10, help="thinking_time budget in seconds (1-120) for the agent/run test")
     args = ap.parse_args()
 
     output: Dict[str, Any] = {"account": args.account, "mode": args.mode}
@@ -547,6 +581,9 @@ def main() -> None:
     if args.test_search:
         output["search_query"] = test_search_query(args.api_key, args.search_query)
         output["search_content"] = test_search_content(args.api_key, args.search_query)
+
+    if args.test_agent:
+        output["agent_run"] = test_agent_run(args.api_key, args.agent_objective, args.agent_thinking_time)
 
     if args.mode == "full":
         lookup_tags = test_lookup_and_tags(args.api_key, args.user_email, args.allow_write, args.tag_name)
@@ -662,6 +699,14 @@ def main() -> None:
             "overall": sc.get("search_content", "UNKNOWN"),
             "search_content_http": sc.get("search_content_http"),
             "content_count": sc.get("content_count"),
+        }
+
+    if "agent_run" in output:
+        ar = output["agent_run"]
+        output["agent_run_summary"] = {
+            "overall": ar.get("agent_run", "UNKNOWN"),
+            "agent_run_http": ar.get("agent_run_http"),
+            "step_count": ar.get("step_count"),
         }
 
     if "lookup_tags" in output:

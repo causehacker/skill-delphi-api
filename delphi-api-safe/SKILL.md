@@ -306,6 +306,17 @@ python3 scripts/test_delphi_v3.py \
   --search-query "What is your background?"
 ```
 
+Run the knowledge-base agent test (heavier/slower than search — synthesizes an answer with a reasoning trace instead of returning raw chunks):
+
+```bash
+python3 scripts/test_delphi_v3.py \
+  --api-key "$DELPHI_API_KEY" \
+  --mode chat \
+  --test-agent \
+  --agent-objective "Summarize the key themes covered in the knowledge base." \
+  --agent-thinking-time 10
+```
+
 Enable write endpoint tests only with explicit consent:
 
 ```bash
