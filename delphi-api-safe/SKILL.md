@@ -46,6 +46,7 @@ Run Delphi V3 API tests in a non-destructive, user-safe way. Prefer reproducible
   - **Search**:
     - `POST /v3/search/query` — semantic + keyword search across clone's knowledge base
     - `POST /v3/search/content` — search content sources by title or description
+  - **Agent**: `POST /v3/agent/run` — autonomous knowledge-base agent; takes an `objective` and returns a synthesized `finalResult` plus a reasoning trace, rather than raw chunks. Heavier than search — use it when the user wants a synthesized answer or multi-hop reasoning, not a chunk lookup.
 - See `references/v3-endpoints.md` for request/response expectations and known quirks.
 - Never invent user data (emails, API keys, clone names, webhook URLs). Users often share test output with teammates or paste it into tickets — invented data causes confusion and erodes trust.
 - If a required field is missing, ask a direct question before proceeding.
@@ -157,9 +158,11 @@ python3 scripts/audience_audit.py --api-key "$DELPHI_API_KEY" --no-retention
 python3 scripts/audience_audit.py --account <name> --json --cache <name>.cache.json
 ```
 
-Notes: the script sweeps users at `limit=1000`, sets a custom User-Agent
-(Cloudflare 403s the default `python-urllib` UA), retries Delphi's intermittent
-`500`s on `/v3/conversation/list`, and paces under the 120 req/60s limit. A full
+Notes: the script sweeps users at `limit=200` (the real API max — `limit=1000`
+was a docs/code bug in an earlier version of this skill and 400s; see
+`references/v3-endpoints.md`), sets a custom User-Agent (Cloudflare 403s the
+default `python-urllib` UA), retries Delphi's intermittent `500`s on
+`/v3/conversation/list`, and paces under the 120 req/60s limit. A full
 retention pass makes one `conversation/list` call per real user, so it takes a
 few minutes for large audiences — run it in the background.
 
@@ -248,6 +251,15 @@ curl -sS -X POST "https://api.delphi.ai/v3/search/content" \
   -H "x-api-key: $DELPHI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"query": ["<topic or title>"]}'
+```
+
+### Run knowledge-base agent (synthesized answer, not raw chunks)
+
+```bash
+curl -sS -X POST "https://api.delphi.ai/v3/agent/run" \
+  -H "x-api-key: $DELPHI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"objective": "<question or task>", "thinking_time": 10}'
 ```
 
 ## Non-technical UX rules

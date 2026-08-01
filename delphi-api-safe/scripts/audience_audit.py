@@ -101,7 +101,7 @@ def _ts(ts):
 def sweep_users(key: str) -> list:
     users, cursor = [], None
     while True:
-        url = "/v3/users?limit=1000" + (f"&cursor={urllib.parse.quote(cursor, safe='')}" if cursor else "")
+        url = "/v3/users?limit=200" + (f"&cursor={urllib.parse.quote(cursor, safe='')}" if cursor else "")
         d = get(url, key)
         users.extend(d.get("users", []))
         cursor = d.get("next_cursor")

@@ -1,6 +1,9 @@
 # Delphi V3 Endpoints - Tested Coverage and Notes
 
-This file captures endpoint behavior learned from real tests.
+This file captures endpoint behavior learned from real tests, cross-checked
+against the live spec at `GET /v3/openapi.json` (requires a valid `x-api-key`;
+the default UA is 403'd by Cloudflare, same as other endpoints — set a custom
+`User-Agent`). Last cross-checked 2026-08-01 against `openapi: 3.1.0`.
 
 Base URL: `https://api.delphi.ai`
 Authentication: `x-api-key` header on every request (key scoped to a single clone).
@@ -20,6 +23,7 @@ Rate limits: 120 requests per 60 seconds per API key. Exceeding returns `429`.
 - `POST /v3/conversation`
   - Expected: `200` + `conversation_id`, `created_at`, `initial_message`
   - Body: `{}` (empty JSON is sufficient) or `{"user_email": "..."}` to associate with a user
+  - Optional body field: `slug` (string) — same clone-scoping purpose as the `slug` field on `/v3/stream`
 
 - `POST /v3/stream`
   - Expected: `200` + SSE `data:` chunks + `[DONE]`
@@ -104,13 +108,19 @@ Rate limits: 120 requests per 60 seconds per API key. Exceeding returns `429`.
 - `GET /v3/users`
   - Paginated list of all users in the audience
   - Query params:
-    - `limit`: page size 1-1000 (default 50)
+    - `limit`: page size 1-200 (default 50). **Not 1000** — `limit>200` returns
+      `400 {"detail":"Invalid request"}`. This is confirmed both empirically
+      (tested across 6+ clones and both `dsk-`/`dlph_` key styles, 2026-07-23)
+      and in the live OpenAPI schema (`maximum: 200`). An earlier version of
+      this doc and `scripts/audience_audit.py` assumed 1000; the script has
+      since been corrected to `limit=200` — if you see `limit=1000`
+      hardcoded anywhere, it's stale and will 400 on every sweep.
     - `cursor`: opaque cursor from previous response's `next_cursor`
     - `active`: filter by active (true) or revoked (false)
   - Response: `{ "users": [...], "next_cursor": "...|...", "has_more": true/false }`
   - User object fields: `user_id`, `email`, `name`, `phone_number`, `tags` (string[]), `tier`, `active`, `date_joined`
   - Cursor is opaque — do not parse or construct manually. Pass `next_cursor` as `cursor` until `has_more` is false.
-  - Use `limit=1000` to sweep a full audience in the fewest pages.
+  - Use `limit=200` to sweep a full audience in the fewest pages.
   - **Audience sizing — focus on REAL emails**: the raw list is padded with
     test/smoke/integration addresses. A "real" email has a plausible address
     (`@`, dotted domain, non-empty local part) and none of these markers:
@@ -123,7 +133,16 @@ Rate limits: 120 requests per 60 seconds per API key. Exceeding returns `429`.
   - Expected: `200` + `user_id`, `email`, `phone_number`
   - Body: `{"email": "user@example.com"}` or `{"phone_number": "+14155552671"}`
   - Exactly one of `email` or `phone_number` must be provided.
-  - Note: can auto-create user for allowed keys.
+  - Note: can auto-create user for allowed keys. All keys can look up an
+    *existing* user; only some keys can create one from a fresh
+    email/phone. A key that can't create returns a deterministic
+    `400 {"detail":"Invalid request"}` on a never-before-seen address (no
+    partial write). This was observed on `dlph_` App-Launch keys for
+    Andre Agassi and Darren Cahill in July 2026 and confirmed fixed on
+    2026-08-01 — if a similar 400 shows up on a create-path lookup, check
+    whether it's an isolated key/clone entitlement gap before assuming a
+    regression. Where creation is enabled, upsert semantics are correct:
+    insert on new, same `user_id` returned on repeat lookup, no duplicates.
 
 - `GET /v3/users/{user_id}/info`
   - Response: `{ "user_id", "info_items": [...], "total_count" }`
@@ -180,7 +199,7 @@ Known quirk:
     - `query` (string[], required): Semantic search strings (questions or topics)
     - `keywords` (string[], optional): Keyword/phrase strings for exact-match (BM25) boosting
     - `content` (string[], optional): Content descriptions to scope results to matching sources
-    - `contentIds` (string[], optional): Direct content IDs to filter results to specific sources
+    - `contentIds` (string[], optional): Direct content IDs to filter results to specific sources. `content_ids` (snake_case) is also accepted as an alias — same field, either casing works.
     - `limit` (number, optional): Max chunks to return (1–50, default 10)
     - `tag` (string, optional): Access tier tag (e.g. `PUBLIC`, `PREMIUM`). Defaults to broadest access.
   - How search works: `query` strings are used for semantic (meaning-based) search. `keywords` are routed through hybrid search for better exact-phrase matching via BM25. When both are provided, results are merged and deduplicated, keeping the highest-scoring passages.
@@ -198,6 +217,7 @@ Known quirk:
   - Body fields:
     - `query` (string[], required): Content search strings (titles, descriptions, topics)
     - `tag` (string, optional): Access tier tag (e.g. `PUBLIC`, `PREMIUM`). Defaults to broadest access.
+    - `limit` (number, optional): Max content sources to return (1–50, default 10)
   - Response: `{ "content": [...] }`
     - `content[].contentId`: Unique identifier
     - `content[].title`: Title of the content
@@ -205,6 +225,25 @@ Known quirk:
     - `content[].summary`: Brief summary (may be null)
     - `content[].metaData`: Additional metadata (varies by content type)
     - `content[].createdTime`, `content[].editedTime`: Timestamps
+
+## Agent
+
+- `POST /v3/agent/run` — **new as of 2026-08-01**, found by diffing the live
+  `GET /v3/openapi.json` against this doc; not previously covered here.
+  - Runs an autonomous multi-strategy knowledge-base agent — a step up from
+    `/v3/search/query`: instead of raw chunks, it fans out across passages,
+    concepts, titles, and Q&A pairs, reasons over the results, and returns a
+    synthesized answer plus a full reasoning trace. Live-tested successfully
+    (200, ~8s for a 5s `thinking_time` budget).
+  - Body fields:
+    - `objective` (string, required, min length 1): the question or task
+    - `thinking_time` / `thinkingTime` (number, optional, 1–120): time budget in seconds; both casings accepted
+    - `schema` (string, optional): constrain the shape of the output
+    - `priors` (string, optional): seed context for the agent
+    - `tag` (string, optional): access-tier scoping, same convention as the search endpoints
+  - Response: `{ "finalResult": "...", "steps": [{ "query", "result", "reasoning", "timestamp" }], "totalTime", "iterations", "schemaUsed" }`
+  - `steps[]` is the full trace — each entry shows what the agent searched, what it found, and why, useful for debugging why an answer came out a certain way.
+  - Slower and heavier than `/v3/search/query` — prefer `search/query` for simple chunk retrieval, reach for `agent/run` when you need a synthesized answer or multi-hop reasoning over the knowledge base.
 
 ## Common error codes
 
