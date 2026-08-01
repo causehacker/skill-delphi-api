@@ -1,6 +1,6 @@
 ---
 name: delphi-api-safe
-description: Safely operate and troubleshoot the Delphi V3 API (conversations, streaming, voice, clone, knowledge-base search) and the Delphi V4 Developer Platform API (contacts/CRM, knowledge-base writes, outbound SMS/email, webhooks, integrations, OpenAI-compatible LLM) for technical and non-technical users. Use when a user asks to test Delphi API keys, run pass/fail checks across accounts, generate curl commands, debug HTTP 4xx/5xx errors, or prepare incident reports. Also use for audience and engagement analytics — sizing an audience ("how many users", "how many real emails", filtering out test/fake accounts) and measuring conversation retention ("retention", "return rate", "how many users came back", "how many have had conversations", repeat-visit and churn analysis from conversation data). Also trigger when the user says things like "is my clone working", "test this key", "run a smoke test", "check my Delphi", "new Delphi for [name]", "evaluate retention", "v4", "contacts", "upsert a contact", "add to the knowledge base", "set up a webhook", or shares a dsk- or dlph_ API key and wants to verify it. If the user pastes a Delphi API key or mentions Delphi clones, minds, or contacts in any testing, troubleshooting, or audience-analytics context, use this skill.
+description: Safely operate and troubleshoot the Delphi V3 API (conversations, streaming, voice, clone, knowledge-base search) and the Delphi V4 Developer Platform API (contacts/CRM, knowledge-base writes, outbound SMS/email, webhooks, integrations, OpenAI-compatible LLM) for technical and non-technical users. Use when a user asks to test Delphi API keys, run pass/fail checks across accounts, generate curl commands, debug HTTP 4xx/5xx errors, or prepare incident reports. Also use for audience and engagement analytics — sizing an audience ("how many users", "how many real emails", filtering out test/fake accounts) and measuring conversation retention ("retention", "return rate", "how many users came back", "how many have had conversations", repeat-visit and churn analysis from conversation data), including a correctly time-boxed, censoring-corrected "D30 retention" / "30-day retention" / "true 30 day retention" / "cohort retention" number distinct from all-time return-rate metrics. Also trigger when the user says things like "is my clone working", "test this key", "run a smoke test", "check my Delphi", "new Delphi for [name]", "evaluate retention", "v4", "contacts", "upsert a contact", "add to the knowledge base", "set up a webhook", or shares a dsk- or dlph_ API key and wants to verify it. If the user pastes a Delphi API key or mentions Delphi clones, minds, or contacts in any testing, troubleshooting, or audience-analytics context, use this skill.
 ---
 
 # Delphi API Safe
@@ -204,8 +204,13 @@ Among real users with ≥1 conversation, report:
 
 - **Return rate** — % with ≥2 conversations (came back at least once).
 - **Multi-day rate** — % active on ≥2 distinct UTC calendar days. **This is the
-  truest retention number** — multiple conversations on the *same* day can be one
-  session split up; a new day is a genuine repeat visit. Lead with this.
+  truest *all-time* retention number** — multiple conversations on the *same* day
+  can be one session split up; a new day is a genuine repeat visit. Lead with
+  this when the user wants an unbounded, lifetime signal. But it is **not** a
+  30-day metric — it never expires and isn't comparable across differently-aged
+  clones. If the user specifically asks for "D30", "30-day", or "true/cohort
+  retention," use `scripts/d30_retention.py` (below) instead — this all-time
+  number will misrepresent that ask.
 - **Recency / churn** — days since each user's last conversation (`≤7d`, `8–30d`,
   `31–90d`, `>90d`), benchmarked against the clone's age.
 - **Depth** — conversations-per-user distribution (`1`, `2–3`, `4–10`, `11+`).
@@ -235,6 +240,73 @@ default `python-urllib` UA), retries Delphi's intermittent `500`s on
 `/v3/conversation/list`, and paces under the 120 req/60s limit. A full
 retention pass makes one `conversation/list` call per real user, so it takes a
 few minutes for large audiences — run it in the background.
+
+### 3. D30 retention — the correctly-defined, time-boxed 30-day rate
+
+`audience_audit.py`'s return-rate and multi-day-rate are **all-time** — they
+never expire, so they aren't "30-day retention" no matter how they get
+described. When the user specifically asks for **D30 / 30-day / true / cohort
+retention**, use `scripts/d30_retention.py` instead. It answers one precise
+question: *of users whose first conversation fell in a 30-day acquisition
+window, what % had another conversation in the following 30 days?*
+
+The window is always the **last `--window-days` (default 60), split into two
+equal 30-day halves** ending "now" (or ending at the data's own last timestamp
+in export-only mode):
+
+```
+[reference-60d ... reference-30d)   acquisition half  -> cohort membership
+[reference-30d ... reference]       return-check half -> did they come back?
+```
+
+Because the return-check half always ends exactly at `reference`, every cohort
+member has had a full, uncensored 30 days to return — no need to drop a
+"too-recent-to-judge" tail the way a naive whole-window calculation would.
+
+**Three data sources, one calculation** (pick with flags, not a mode switch):
+
+| Flags | Speed | Accuracy | When to use |
+|---|---|---|---|
+| `--export FILE` only | fast, local | approximate — "first conversation" means first appearance *in the file*, so a long-lapsed user reappearing near the window start can misclassify as "new" | quick gut-check, no API budget wanted |
+| `--account NAME` only | slow — one API call per real user in the **entire** audience | most authoritative — `/v3/conversation/list` returns full, uncapped history | small clones, or no export on hand |
+| `--export FILE --account NAME` (**combo**, recommended default when both exist) | fast **and** authoritative | uses the export only to find who was active in the window (cheap, local), then hits the API just for those candidates to pull their true full history | the default choice whenever an export is available |
+
+Combo mode also reports **coverage** — what % of the *live* real audience
+appears anywhere in the export. On one clone tested, coverage was only ~29%:
+71% of the registered audience had zero conversations in the trailing 60 days
+and would be invisible to an export-only analysis. Always surface this number
+alongside the D30 rate; a low coverage figure means most of the audience is
+dormant, which is a different (and often more urgent) problem than retention
+among the users who do show up.
+
+**Key selection — always prefer the high-rate-limit key.** Legacy `dsk-` keys
+are capped at 120 req/60s; App-Launch `dlph_` keys carry a much higher
+published cap and are what new clones get provisioned with going forward. The
+script auto-detects this: pass a legacy `--account name` and, if a
+`name_applaunch` sibling exists in `keys.json`, it transparently swaps to the
+`dlph_` key and paces faster — you don't need to know the exact handle. It
+still paces `dlph_` keys deliberately (not zero-delay): a rapid burst has been
+observed to draw a `429` even on a high-rate-limit key, so "high limit" is not
+"no limit."
+
+```bash
+# Fast, local, approximate
+python3 scripts/d30_retention.py --export conversations.ndjson
+
+# Slow, full-audience live sweep, most authoritative on its own
+python3 scripts/d30_retention.py --account <name>
+
+# COMBO — fast + authoritative (recommended whenever an export exists)
+python3 scripts/d30_retention.py --export conversations.ndjson --account <name>
+
+# Override the window (e.g. D60 instead of D30) or get machine-readable output
+python3 scripts/d30_retention.py --export conversations.ndjson --account <name> --window-days 90 --json
+```
+
+Report the headline `D30 RETENTION RATE` as the single clear number — don't
+present it alongside `audience_audit.py`'s all-time return/multi-day rates as
+if they're interchangeable options; they answer different questions and
+mixing them without labels is how a stakeholder ends up quoting the wrong one.
 
 ## Standard commands
 

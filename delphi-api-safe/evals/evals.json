@@ -60,6 +60,16 @@
       "id": 12,
       "prompt": "list all users in my audience. key: dsk-audienceList99",
       "expected_output": "Should use GET /v3/users with pagination, show user emails/names/tiers/tags, redact key as dsk-****t99"
+    },
+    {
+      "id": 13,
+      "prompt": "what's the true 30-day retention for my clone? key: dsk-d30Check88",
+      "expected_output": "Should recognize this is a time-boxed D30 ask (distinct from audience_audit.py's all-time return/multi-day rate) and use scripts/d30_retention.py. Should not present the all-time metric as if it answers a 30-day question."
+    },
+    {
+      "id": 14,
+      "prompt": "I have a 60-day conversation export and an API key for karamo, give me a clear D30 retention number",
+      "expected_output": "Should run scripts/d30_retention.py in combo mode (--export FILE --account karamo), report the single headline D30 rate plus the export-vs-live audience coverage percentage, and note that combo mode auto-prefers a dlph_ App-Launch sibling key over a legacy dsk- key if one exists in keys.json."
     }
   ]
 }
