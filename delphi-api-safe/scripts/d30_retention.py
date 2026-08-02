@@ -253,6 +253,9 @@ def main():
     ap.add_argument("--exclude-email", action="append", default=[], help="Additional placeholder email(s) to exclude (repeatable).")
     ap.add_argument("--top", type=int, default=10)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--dump-history", help="Write the resolved {email: [ISO timestamps]} history to this "
+                                           "path (PII -- keep local). Lets a follow-up analysis reuse an "
+                                           "expensive per-user API pull instead of repeating it.")
     args = ap.parse_args()
 
     exclude = DEFAULT_EXCLUDE | {e.lower() for e in args.exclude_email}
@@ -289,6 +292,11 @@ def main():
         mode = "api-only"
         by_user, total_live, total_real = load_from_api_full(key, exclude, style)
         reference_time = datetime.datetime.now(datetime.timezone.utc)
+
+    if args.dump_history:
+        json.dump({e: [t.isoformat() for t in times] for e, times in by_user.items()},
+                  open(args.dump_history, "w"))
+        print(f"history dump -> {args.dump_history} ({len(by_user)} users)", file=sys.stderr)
 
     result = compute_d30(by_user, reference_time, args.window_days)
     result["mode"] = mode
