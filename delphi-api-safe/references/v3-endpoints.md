@@ -123,23 +123,32 @@ Rate limits: 120 requests per 60 seconds per API key. Exceeding returns `429`.
     | `file_urls` | string[] | no | Up to 10 file URLs, indexed like chat uploads before answering |
     | `idempotency_key` | string | no | 1–512 chars |
 
-  - ⚠️ **Source discrepancy:** Delphi's GitBook page lists `file_urls` but not
-    `idempotency_key`; the live `openapi.json` lists `idempotency_key` but not
-    `file_urls`. Both are recorded above; treat either as best-effort and verify
-    before depending on it.
+  - **Source discrepancy, resolved by testing (2026-08-02):** Delphi's GitBook
+    page lists `file_urls` but not `idempotency_key`; the live `openapi.json`
+    lists `idempotency_key` but not `file_urls`. Measured behavior:
+    - **`idempotency_key` — implemented.** Reusing a key with the *same* question
+      replays the identical answer; reusing it with a *different* question
+      returns `409`, matching the documented conflict semantics. Confirmed on
+      both v3 (`idempotency_key`) and v4 (`idempotencyKey`).
+    - **`file_urls` — no evidence it is implemented.** The endpoint **silently
+      ignores unknown fields** (a made-up field returns `200`), and `file_urls`
+      behaves identically to one: passing a string instead of an array, or 11
+      URLs against a documented max of 10, both return `200` with no validation
+      error. That is consistent with the field not being wired up. It can't be
+      disproven from the outside — the API might accept it unvalidated — but
+      don't depend on attachments via `ask` without confirming with Delphi.
   - Response is a **flat object** (not wrapped): `{ "answer": "...", "citations": [...] }`
   - Citation fields: `type`, `text`, `title`, `url`, `citation_url`, `page_num`,
-    `timestamp`, `tweet_id`, `created_at` (most nullable).
-  - ⚠️ **Currently returns `502` for all callers.** Deterministic — 0 successes in
-    24+ attempts across clones, both key styles, and fully-scoped keys. Not a
-    scope issue (that returns `403`). Reported to Delphi 2026-08-02.
-    Workaround: `POST /v3/conversation` then `POST /v3/stream`.
-    **Possible cause:** Delphi's own docs note these endpoints ship with the
-    "Immortal API endpoints" release (PR #2092) and warn against publishing docs
-    before it is live. The endpoint *is* present in the production spec and
-    returns `502 dependency_failure` rather than `404`, which points to a
-    partially-deployed release — routed, but with its backend dependency down —
-    rather than a regression. Re-test after that release lands.
+    `timestamp`, `tweet_id`, `created_at` (most nullable). Observed empty
+    (`citations: []`) even on knowledge-grounded answers that clearly drew on the
+    KB, so don't assume citations will be populated.
+  - ✅ **Working as of 2026-08-02 ~19:44 UTC.** This endpoint returned `502` for
+    every caller earlier the same day (0 successes in 24+ attempts); Delphi
+    shipped a fix. Re-verified 10/10 across 5 clones × both key styles × v3+v4,
+    with real generation latency (~3–6s vs the previous 0.4s fast-fail).
+  - Does **not** require the `conversations:write` scope — verified working on an
+    App-Launch key that `403`s on the conversation endpoints. For those
+    scope-limited keys, `ask` is currently the only way to get a one-shot answer.
 
 - `GET /v3/conversation/{conversation_id}/insights` — **added 2026-08-02.**
   Insight cards surfaced by Delphi's synthesis (e.g. a notable testimonial, or a

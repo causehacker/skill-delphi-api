@@ -218,8 +218,9 @@ def test_conversations(api_key: str, message: str) -> Dict[str, Any]:
 def test_ask(api_key: str, question: str) -> Dict[str, Any]:
     """POST /v4/ask — stateless Q&A.
 
-    KNOWN OUTAGE (reported 2026-08-02): 502 dependency_failure for all callers on
-    both v3 and v4. Not a scope problem — that returns 403 naming the scope.
+    Returned 502 platform-wide for part of 2026-08-02; fixed the same day and
+    verified working. A 502 here now indicates a REGRESSION. Does NOT require
+    conversations:write — works on scope-limited App-Launch keys.
     """
     st, parsed, raw = http_json("POST", "/ask", api_key, {"question": question}, max_time=90)
     payload = unwrap(parsed)
@@ -227,12 +228,13 @@ def test_ask(api_key: str, question: str) -> Dict[str, Any]:
     ok = st == "200" and bool(answer)
     note = ""
     if not ok:
-        note = ("KNOWN OUTAGE: /v4/ask returns 502 platform-wide (reported 2026-08-02) "
-                "— not a problem with this key" if st == "502" else err_note(st, parsed, raw))
+        note = ("REGRESSION? /v4/ask 502 — verified working 2026-08-02; a fast 502 means the "
+                "response service died at stream open, not a key/scope issue"
+                if st == "502" else err_note(st, parsed, raw))
     return {
         "ask": "PASS" if ok else "FAIL",
         "ask_http": st,
-        "known_outage": st == "502",
+        "regression_502": st == "502",
         "answer_preview": (answer or "")[:160],
         "note": note,
     }
@@ -321,7 +323,7 @@ def main() -> None:
                          "insights). Needs `conversations:write`; invokes the model.")
     ap.add_argument("--conversation-message", default="Reply in one short sentence.")
     ap.add_argument("--test-ask", action="store_true",
-                    help="Include POST /v4/ask (KNOWN OUTAGE — 502 platform-wide as of 2026-08-02).")
+                    help="Include POST /v4/ask (stateless Q&A; verified working 2026-08-02).")
     ap.add_argument("--ask-question", default="What is your background?")
     args = ap.parse_args()
     key = resolve_key(args)
@@ -365,18 +367,20 @@ def main() -> None:
     if args.test_llm:
         out["llm"] = test_llm(key, args.llm_prompt)
 
-    # Roll-up. Two categories are deliberately NOT counted as failures:
-    #   SKIP          — the key lacks a scope; a provisioning gap, not a fault
-    #   known_outage  — a documented platform-side bug (e.g. /ask 502)
-    # Counting either would make the harness go red for something the caller
-    # cannot fix, which trains people to ignore the result.
-    checks, skipped, outages = [], [], []
+    # Roll-up. SKIP is deliberately NOT counted as a failure: it means the key
+    # lacks a scope, which is a provisioning gap rather than a fault, and making
+    # the harness go red for something the caller cannot fix trains people to
+    # ignore the result.
+    #
+    # There is no longer a "known outage" exemption. The /ask 502 that warranted
+    # one was fixed 2026-08-02, so a 502 there now IS a real failure and should
+    # turn the run red. Flagged separately via `regression_502` for triage.
+    checks, skipped, regressions = [], [], []
     for name, v in out.items():
         if not isinstance(v, dict):
             continue
-        if v.get("known_outage"):
-            outages.append(name)
-            continue
+        if v.get("regression_502"):
+            regressions.append(name)
         for label, verdict in v.items():
             if verdict == "SKIP":
                 skipped.append(f"{name}.{label}" if label != name else name)
@@ -391,7 +395,7 @@ def main() -> None:
         "passed": sum(1 for _, v in checks if v == "PASS"),
         "failed": failed,
         "skipped_missing_scope": skipped,
-        "known_outages": outages,
+        "regressions_502": regressions,
     }
 
     print(json.dumps(out, indent=2))

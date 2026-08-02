@@ -26,7 +26,7 @@ Banners on the endpoint cards tell you what's safe to press:
 
 - **red** — changes real state (sends a message, deletes content, deploys code)
 - **amber** — metered (consumes budget, tokens, or invokes the model)
-- **purple** — known outage; expect a 502 until Delphi ships a fix
+- **purple** — known outage; expect failures until Delphi ships a fix (none active as of 2026-08-02)
 
 Two things that will otherwise look like your bug:
 
@@ -159,7 +159,7 @@ python3 delphi-api-safe/scripts/test_delphi_v4.py --account <name>
 
 - `GET /v4/profile`, `/v4/profile/questions`, `/v4/profiles/{username}`
 - opt-in conversations (`--test-conversations`): `POST /v4/conversations`, `POST /v4/conversations/{id}/messages` (synchronous send), `GET /v4/conversations/{id}/insights` — needs `conversations:write` / `insights:read`, reported as SKIP when the key lacks them
-- opt-in `--test-ask`: `POST /v4/ask` — **known outage, returns 502 platform-wide** (reported 2026-08-02); the harness labels it rather than counting it as a failure
+- opt-in `--test-ask`: `POST /v4/ask` — stateless Q&A. Returned 502 platform-wide earlier on 2026-08-02; **fixed and verified working** (10/10 across clones and key styles). Notably it does *not* require `conversations:write`, so it works on the scope-limited App-Launch keys that 403 on the conversation endpoints.
 - `GET /v4/contacts`, `/v4/contacts/{id}`, `/v4/contacts/{id}/threads`
 - `GET /v4/contact-tags`, `/v4/contact-properties/definitions`
 - `GET /v4/content`, `/v4/content/{id}`

@@ -670,8 +670,7 @@ const ENDPOINTS_V3 = [
       extra: [{ id: "del_cid", placeholder: "conversation_id", label: "Conversation ID" }],
       pathFn: (g, ex) => `/v3/conversation/${ex.del_cid || "<conversation_id>"}`
     },
-    { method: "POST", path: "/v3/conversation/ask", summary: "Ask a one-off question", desc: "<strong>&#9888; Currently returns 502 for all callers</strong> &mdash; a Delphi-side fault reported 2026-08-02, not a problem with your key or payload. Use <code>/v3/conversation</code> + <code>/v3/stream</code> instead. When fixed: generates a reply with no conversation created. Visitor memory loads from <code>user_email</code> when provided. Response is a flat <code>{answer, citations}</code>, not wrapped.",
-      danger: "broken",
+    { method: "POST", path: "/v3/conversation/ask", summary: "Ask a one-off question", desc: "Generates a reply with <strong>no conversation created</strong> &mdash; stateless Q&amp;A. Visitor memory loads from <code>user_email</code> when provided; omit it for a fully anonymous, memory-free answer. Response is a flat <code>{answer, citations}</code>, <em>not</em> <code>data</code>-wrapped (the V4 equivalent is).<br><br>Verified working 2026-08-02 after a same-day outage. <code>idempotency_key</code> is honored: reusing it with the same question replays the answer, with a different question returns 409. Citations may come back empty even when the answer clearly used the knowledge base. Note the endpoint <strong>silently ignores unknown body fields</strong>, so a 200 doesn't prove a field is supported.",
       body: [
         { name: "question", type: "string", req: true, desc: "The question (1-50,000 chars)" },
         { name: "slug", type: "string", req: false, desc: "Which Mind to ask (defaults to the key's Mind)" },
@@ -1082,8 +1081,7 @@ const ENDPOINTS_V4 = [
       pathFn: (g, ex) => `/v4/conversations/${ex.v4stm_cid || "<conversationId>"}/messages/stream`,
       bodyFn: (g, ex) => ({ text: ex.v4stm_text || "Hello!" })
     },
-    { method: "POST", path: "/v4/ask", summary: "Ask (stateless)", desc: "<strong>&#9888; Currently returns 502 for all callers</strong> &mdash; a Delphi-side fault reported 2026-08-02. It is <em>not</em> your key, scope, or payload: a scope failure returns 403 naming the scope, this returns 502 <code>dependency_failure</code>. Use the two-call workaround (create a conversation, then send a message). When fixed: answers from the knowledge base without creating a conversation, session, message, or insight.",
-      danger: "broken",
+    { method: "POST", path: "/v4/ask", summary: "Ask (stateless)", desc: "Answers from the knowledge base <strong>without creating</strong> a conversation, session, message, attachment, or insight. Response is <code>{data:{answer, citations}}</code> &mdash; <code>data</code>-wrapped, unlike the V3 equivalent.<br><br>Verified working 2026-08-02 after a same-day outage. <strong>Does not require <code>conversations:write</code></strong> &mdash; confirmed on an App-Launch key that 403s on the conversation endpoints, so for scope-limited keys this is the only one-shot-answer route. <code>idempotencyKey</code> is honored (409 on reuse with different input).",
       body: [
         { name: "question", type: "string", req: true, desc: "The question (1-50,000)" },
         { name: "contactId", type: "string", req: false, desc: "Informs the answer with that contact's identity/tier" },
@@ -1783,7 +1781,7 @@ function renderEndpoint(ep, idx) {
       <div class="endpoint-body">
         ${ep.danger === "destructive" ? `<div class="danger-banner destructive"><span class="dot"></span><strong>Changes real state.</strong> This writes, deletes, or sends something a real person can see. Confirm before you press Send.</div>` : ``}
         ${ep.danger === "metered" ? `<div class="danger-banner metered"><span class="dot"></span><strong>Metered.</strong> Safe to call, but it consumes budget, tokens, or sends a notification. Don't loop it.</div>` : ``}
-        ${ep.danger === "broken" ? `<div class="danger-banner broken"><span class="dot"></span><strong>Known outage &mdash; returns 502.</strong> Delphi-side fault reported 2026-08-02, not your key or payload. Expect this to fail until fixed; re-test before relying on it.</div>` : ``}
+        ${ep.danger === "broken" ? `<div class="danger-banner broken"><span class="dot"></span><strong>Known outage.</strong> A Delphi-side fault, not your key or payload &mdash; a permissions problem returns 403 naming the scope. Expect this to fail until it is fixed; re-test before relying on it.</div>` : ``}
         <div class="endpoint-section" style="color:var(--text-secondary);font-size:13px">${ep.desc}</div>
         ${renderParamsTable(ep.pathParams, "Path Parameters")}
         ${renderParamsTable(ep.query, "Query Parameters")}

@@ -414,10 +414,11 @@ def test_conversation_insights(api_key: str, conversation_id: str) -> Dict[str, 
 def test_ask(api_key: str, question: str) -> Dict[str, Any]:
     """POST /v3/conversation/ask — one-off question, no conversation created.
 
-    KNOWN OUTAGE (reported 2026-08-02): returns 502 dependency_failure for all
-    callers on both v3 and v4. Not a key/scope/payload problem — a scope failure
-    would be 403. Reported separately so a 502 here is surfaced as a known issue
-    rather than looking like a broken key.
+    Returned 502 platform-wide for part of 2026-08-02; Delphi fixed it the same
+    day and it is verified working. A 502 here now means a REGRESSION, not a
+    known outage — the signature is a fast (~0.4s) 502 dependency_failure with
+    failureKind=experience_stream_incomplete, versus ~3-6s for real generation.
+    Either way it is not a key/scope problem: a scope failure returns 403.
     """
     st, body = http_json("POST", "/conversation/ask", api_key, {"question": question}, max_time=90)
     answer = ""
@@ -429,14 +430,14 @@ def test_ask(api_key: str, question: str) -> Dict[str, Any]:
     ok = st == "200" and bool(answer)
     note = ""
     if not ok:
-        note = ("KNOWN OUTAGE: /conversation/ask returns 502 platform-wide "
-                "(reported 2026-08-02) — not a problem with this key"
+        note = ("REGRESSION? /conversation/ask 502 — worked 2026-08-02 after a fix; "
+                "a fast 502 means the response service died at stream open, not a key/scope issue"
                 if st == "502" else
                 (f"ask http {st}" if st != "200" else "no answer in response"))
     return {
         "ask": "PASS" if ok else "FAIL",
         "ask_http": st,
-        "known_outage": st == "502",
+        "regression_502": st == "502",
         "answer_preview": answer[:160],
         "note": note,
     }
@@ -595,7 +596,7 @@ def main() -> None:
                     help="overrides.multiple_languages=false — ask the Mind to always reply in --language. "
                          "NOTE: advisory only; measured ~2/5 compliance. See references/v3-endpoints.md.")
     ap.add_argument("--purpose", help="overrides.purpose — replace the Mind's instructions for this conversation")
-    ap.add_argument("--test-ask", action="store_true", help="Include POST /v3/conversation/ask (KNOWN OUTAGE — returns 502 platform-wide as of 2026-08-02)")
+    ap.add_argument("--test-ask", action="store_true", help="Include POST /v3/conversation/ask (stateless Q&A; verified working 2026-08-02)")
     ap.add_argument("--ask-question", default="What is your background?", help="Question for the ask test")
     ap.add_argument("--test-agent", action="store_true", help="Include the knowledge-base agent test (POST /v3/agent/run — slower/heavier than search)")
     ap.add_argument("--agent-objective", default="Summarize the key themes covered in the knowledge base.", help="Objective string for the agent/run test")

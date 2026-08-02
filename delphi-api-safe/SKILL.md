@@ -183,17 +183,32 @@ thread exists**. Sending a message immediately fails with
 after create means "not ready yet", not "wrong id" — don't send the user
 chasing a bad conversation id. `scripts/test_delphi_v4.py` implements this.
 
-### ⚠️ Known outage: the stateless `ask` endpoints
+### The stateless `ask` endpoints (fixed 2026-08-02)
 
-`POST /v3/conversation/ask` and `POST /v4/ask` **both return `502`
-(`dependency_failure` / `experience_stream_incomplete`) for every caller.**
-Verified deterministic — 0 successes in 24+ attempts across clones, key styles,
-and fully-scoped keys. Reported to Delphi 2026-08-02.
+`POST /v3/conversation/ask` and `POST /v4/ask` answer from the knowledge base
+without creating a conversation. Both **returned `502` for every caller** earlier
+on 2026-08-02; Delphi shipped a fix and they are **verified working** (10/10
+across 5 clones × both key styles × v3 and v4).
 
-**Do not debug this on the user's behalf** — it is not their key, scope, or
-payload. A scope problem returns `403` naming the scope; this is `502`.
-Recommend the two-call workaround (`POST /v4/conversations` then
-`POST /v4/conversations/{id}/messages`) and re-test before relying on `ask`.
+Worth knowing:
+
+- **`ask` does not require `conversations:write`.** For the App-Launch keys that
+  `403` on the conversation endpoints, this is the only one-shot-answer route.
+- **Response shape differs by version**: V3 returns a flat
+  `{answer, citations}`; V4 wraps it as `{"data": {answer, citations}}`.
+- **`idempotency_key` / `idempotencyKey` works**: same key + same question
+  replays the answer; same key + *different* question returns `409`.
+- **Citations may be empty** even when the answer clearly used the KB.
+- **Unknown body fields are silently ignored** (a made-up field returns `200`),
+  so a `200` is not evidence a field is supported. `file_urls` — listed in
+  Delphi's GitBook but not in `openapi.json` — shows no validation at all and
+  behaves exactly like an unknown field; don't rely on it without confirming.
+
+If `ask` ever regresses, the signature to recognize is a **fast `502`** with
+`failureKind: experience_stream_incomplete` (~0.4s, versus ~5s for real
+generation). That's a backend fault, not the user's key — a scope problem
+returns `403` naming the scope. Fall back to `POST /v4/conversations` then
+`POST /v4/conversations/{id}/messages`.
 
 ## Clone discovery
 

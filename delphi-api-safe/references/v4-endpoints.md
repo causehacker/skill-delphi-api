@@ -259,40 +259,41 @@ require `insights:read`) — see Scopes; most App-Launch keys lack both.
   - **Returns existing cards only; it does not trigger synthesis.** Insights are
     generated asynchronously, so a freshly created conversation returns
     `{"data": [], "nextCursor": null}` — that is normal, not an error.
-- `POST /v4/ask` — stateless Q&A. **⚠️ Currently returns `502` for all callers —
-  see the note below.**
+- `POST /v4/ask` — stateless Q&A. ✅ **Working as of 2026-08-02 ~19:44 UTC.**
   - Body: `question` (required, 1–50,000), `contactId` (informs the answer with
     that contact's identity and access tier), `idempotencyKey` (1–512)
   - Answers from the knowledge base **without creating** a conversation, session,
     message, attachment, preview, or insight.
-  - `409` if an idempotency key is reused with different input.
+  - Response: `{"data": {"answer": "...", "citations": [...]}}` — note this *is*
+    `data`-wrapped, unlike the V3 equivalent which returns a flat object.
+  - **`idempotencyKey` verified working**: same key + same question replays the
+    identical answer; same key + *different* question returns `409`.
+  - **Does not require `conversations:write`** — verified on an App-Launch key
+    that `403`s on the conversation endpoints. For the ~14 scope-limited
+    App-Launch keys, `ask` is currently the only route to a one-shot answer.
+  - Citations were observed empty (`[]`) even on knowledge-grounded answers.
 
-### ⚠️ `/v4/ask` and `/v3/conversation/ask` are currently broken
+### Resolved: the `ask` 502 outage (2026-08-02)
 
-Both stateless "ask" endpoints return `502` on every request:
+Both stateless "ask" endpoints returned `502 dependency_failure`
+(`failureKind: experience_stream_incomplete`) for **every** caller for part of
+2026-08-02 — 0 successes in 24+ attempts across 5 clones, both key styles, both
+API versions, and keys with the complete scope set. It was not a scope issue
+(that returns `403`) and not transient; it failed in ~0.4s while a real
+generation takes ~5s, i.e. failing at stream open.
 
-```json
-{"type":"bad_gateway","code":"dependency_failure",
- "message":"The response service failed. Please try again.",
- "details":{"failureKind":"experience_stream_incomplete","attemptCount":1,"status":200}}
-```
+Delphi shipped a fix the same day. **Re-verified 10/10** across 5 clones × both
+key styles × v3 and v4, with normal generation latency (~3–6s).
 
-Verified deterministic — 0 successes in 24+ attempts across 5 clones, both key
-styles, both API versions, and keys with the complete scope set. **Not a scope
-issue** (that would be `403`, not `502`), and not transient (unlike the known
-intermittent `500` on `/v3/stream`, retries never clear it). It fails in ~0.4s
-while a real generation takes ~5s, so it is failing at stream open rather than
-timing out.
-
-**Workaround** — two calls instead of one:
+Kept here because the failure signature is worth recognizing: a fast `502` with
+`experience_stream_incomplete` means the response service died at stream open —
+distinct from a slow timeout, and distinct from a `403` scope problem. If `ask`
+regresses, the two-call workaround still applies:
 
 ```
 POST /v4/conversations                 -> conversationId
 POST /v4/conversations/{id}/messages   -> answer
 ```
-
-This leaves behind conversation state that `ask` exists to avoid, and doubles
-request count. Reported to Delphi 2026-08-02; re-test before relying on `ask`.
 
 ## Attachments (V4) — added 2026-08-02
 
