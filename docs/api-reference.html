@@ -581,16 +581,30 @@ function updateModeBanner() {
 */
 const ENDPOINTS_V3 = [
   { section: "Conversations", endpoints: [
-    { method: "POST", path: "/v3/conversation", summary: "Create conversation", desc: "Start a new conversation and get the initial greeting.",
+    { method: "POST", path: "/v3/conversation", summary: "Create conversation", desc: "Start a new conversation and get the initial greeting.<br><br><strong>Per-conversation <code>overrides</code></strong> merge on top of the Mind's channel settings &mdash; any key you set wins, omitted keys fall back to defaults. <code>purpose</code> replaces the Mind's instructions for this conversation only (max 10,000 chars). <code>default_language</code> is a BCP-47 code (<code>es</code>, <code>fr</code>, <code>pt-BR</code>); setting <strong>Lock language</strong> to <code>false</code> alongside it is meant to force replies into that language regardless of what the user writes.<br><br><strong>&#9888; Language is advisory, not enforced.</strong> Measured 2 of 5 trials complied &mdash; the Mind sometimes narrates the instruction in English instead of obeying it, and once refused a French directive as off-voice. Putting the language in <code>purpose</code> too is a stronger lever. There is also no automatic language mirroring: a Spanish question with no override comes back in English.",
       body: [
+        { name: "slug", type: "string", req: false, desc: "Which Mind to start with (defaults to the key's Mind)" },
         { name: "user_email", type: "string", req: false, desc: "Associate with a user" },
+        { name: "overrides.purpose", type: "string", req: false, desc: "Override the Mind's purpose for this conversation (max 10,000)" },
+        { name: "overrides.default_language", type: "string", req: false, desc: "BCP-47 code, e.g. es / fr / pt-BR" },
+        { name: "overrides.multiple_languages", type: "boolean", req: false, desc: "false + default_language = always reply in that language" },
       ],
       extra: [
         { id: "conv_user_email", placeholder: "user_email", label: "User Email", req: false, global: "userEmail" },
+        { id: "conv_slug", placeholder: "slug", label: "Slug", req: false },
+        { id: "conv_purpose", placeholder: "Help with a billing issue. Be concise.", label: "Override: Purpose", req: false },
+        { id: "conv_lang", placeholder: "es", label: "Override: Default Language (BCP-47)", req: false },
+        { id: "conv_multilang", placeholder: "multiple_languages", label: "Override: Allow other languages", type: "select", options: ["", "false", "true"], req: false },
       ],
       bodyFn: (g, ex) => {
         const b = {};
         if (ex.conv_user_email) b.user_email = ex.conv_user_email;
+        if (ex.conv_slug) b.slug = ex.conv_slug;
+        const o = {};
+        if (ex.conv_purpose) o.purpose = ex.conv_purpose;
+        if (ex.conv_lang) o.default_language = ex.conv_lang;
+        if (ex.conv_multilang) o.multiple_languages = ex.conv_multilang === "true";
+        if (Object.keys(o).length) b.overrides = o;
         return b;
       }
     },
@@ -660,17 +674,23 @@ const ENDPOINTS_V3 = [
       danger: "broken",
       body: [
         { name: "question", type: "string", req: true, desc: "The question (1-50,000 chars)" },
-        { name: "user_email", type: "string", req: false, desc: "Loads this visitor's memory" },
-        { name: "idempotency_key", type: "string", req: false, desc: "Dedupe handle (1-512)" },
+        { name: "slug", type: "string", req: false, desc: "Which Mind to ask (defaults to the key's Mind)" },
+        { name: "user_email", type: "string", req: false, desc: "Loads this visitor's memory; omit for anonymous" },
+        { name: "file_urls", type: "string[]", req: false, desc: "Up to 10 file URLs, indexed before answering (in GitBook, not in openapi.json)" },
+        { name: "idempotency_key", type: "string", req: false, desc: "Dedupe handle (1-512) (in openapi.json, not in GitBook)" },
       ],
       extra: [
         { id: "ask3_q", placeholder: "What is your background?", label: "Question" },
         { id: "ask3_email", placeholder: "user_email", label: "User Email", req: false, global: "userEmail" },
+        { id: "ask3_slug", placeholder: "slug", label: "Slug", req: false },
+        { id: "ask3_files", placeholder: "https://a.pdf,https://b.pdf", label: "File URLs (comma-sep, max 10)", req: false },
         { id: "ask3_idem", placeholder: "idempotency_key", label: "Idempotency Key", req: false },
       ],
       bodyFn: (g, ex) => {
         const b = { question: ex.ask3_q || "What is your background?" };
         if (ex.ask3_email) b.user_email = ex.ask3_email;
+        if (ex.ask3_slug) b.slug = ex.ask3_slug;
+        if (ex.ask3_files) b.file_urls = ex.ask3_files.split(",").map(s => s.trim()).filter(Boolean).slice(0, 10);
         if (ex.ask3_idem) b.idempotency_key = ex.ask3_idem;
         return b;
       }
@@ -1003,17 +1023,28 @@ const ENDPOINTS_V4 = [
         { name: "channelId", type: "string", req: false, desc: "Defaults to the owner's API channel" },
         { name: "contactId", type: "string", req: false, desc: "Omit for an anonymous conversation" },
         { name: "externalId", type: "string", req: false, desc: "Idempotency key (1-512)" },
+        { name: "overrides.purpose", type: "string", req: false, desc: "Override the Mind's purpose (max 10,000)" },
+        { name: "overrides.defaultLanguage", type: "string", req: false, desc: "BCP-47 code, e.g. es / fr / pt-BR" },
+        { name: "overrides.multipleLanguages", type: "boolean", req: false, desc: "false + defaultLanguage = always reply in that language" },
       ],
       extra: [
         { id: "v4cv_contact", placeholder: "contactId", label: "Contact ID", req: false },
         { id: "v4cv_ext", placeholder: "externalId", label: "External ID (idempotency)", req: false },
         { id: "v4cv_chan", placeholder: "channelId", label: "Channel ID", req: false },
+        { id: "v4cv_purpose", placeholder: "Help with a billing issue. Be concise.", label: "Override: Purpose", req: false },
+        { id: "v4cv_lang", placeholder: "es", label: "Override: Default Language (BCP-47)", req: false },
+        { id: "v4cv_multilang", placeholder: "multipleLanguages", label: "Override: Allow other languages", type: "select", options: ["", "false", "true"], req: false },
       ],
       bodyFn: (g, ex) => {
         const b = {};
         if (ex.v4cv_contact) b.contactId = ex.v4cv_contact;
         if (ex.v4cv_ext) b.externalId = ex.v4cv_ext;
         if (ex.v4cv_chan) b.channelId = ex.v4cv_chan;
+        const o = {};
+        if (ex.v4cv_purpose) o.purpose = ex.v4cv_purpose;
+        if (ex.v4cv_lang) o.defaultLanguage = ex.v4cv_lang;
+        if (ex.v4cv_multilang) o.multipleLanguages = ex.v4cv_multilang === "true";
+        if (Object.keys(o).length) b.overrides = o;
         return b;
       }
     },

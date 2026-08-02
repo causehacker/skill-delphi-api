@@ -81,8 +81,11 @@ def test_clone(api_key: str) -> Dict[str, Any]:
     }
 
 
-def test_chat(api_key: str, message: str) -> Dict[str, Any]:
-    c_status, c_body = http_json("POST", "/conversation", api_key, {})
+def test_chat(api_key: str, message: str, overrides: Optional[dict] = None) -> Dict[str, Any]:
+    """Chat round-trip. `overrides` maps to POST /v3/conversation `overrides`
+    (purpose / default_language / multiple_languages) — see references."""
+    payload = {"overrides": overrides} if overrides else {}
+    c_status, c_body = http_json("POST", "/conversation", api_key, payload)
     cid = None
     if c_status == "200":
         try:
@@ -587,6 +590,11 @@ def main() -> None:
     ap.add_argument("--test-voice", action="store_true", help="Include voice streaming test")
     ap.add_argument("--test-search", action="store_true", help="Include knowledge base search tests")
     ap.add_argument("--search-query", default="What is your background?", help="Query string for search tests")
+    ap.add_argument("--language", help="overrides.default_language (BCP-47, e.g. es) on conversation create")
+    ap.add_argument("--lock-language", action="store_true",
+                    help="overrides.multiple_languages=false — ask the Mind to always reply in --language. "
+                         "NOTE: advisory only; measured ~2/5 compliance. See references/v3-endpoints.md.")
+    ap.add_argument("--purpose", help="overrides.purpose — replace the Mind's instructions for this conversation")
     ap.add_argument("--test-ask", action="store_true", help="Include POST /v3/conversation/ask (KNOWN OUTAGE — returns 502 platform-wide as of 2026-08-02)")
     ap.add_argument("--ask-question", default="What is your background?", help="Question for the ask test")
     ap.add_argument("--test-agent", action="store_true", help="Include the knowledge-base agent test (POST /v3/agent/run — slower/heavier than search)")
@@ -606,7 +614,12 @@ def main() -> None:
     output["list_users"] = test_list_users(args.api_key)
 
     if args.mode in ("chat", "full"):
-        output["chat"] = test_chat(args.api_key, args.message)
+        overrides = {}
+        if args.language: overrides["default_language"] = args.language
+        if args.lock_language: overrides["multiple_languages"] = False
+        if args.purpose: overrides["purpose"] = args.purpose
+        if overrides: output["overrides_sent"] = overrides
+        output["chat"] = test_chat(args.api_key, args.message, overrides or None)
         chat_cid = output["chat"].get("conversation_id") if "chat" in output else None
 
         # Test conversation history if we got a conversation_id

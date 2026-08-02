@@ -145,6 +145,34 @@ Rules of thumb:
   two surfaces are involved.
 - Don't migrate working V3 code to V4 for its own sake.
 
+### Per-conversation overrides (purpose + language)
+
+Both surfaces accept an `overrides` object when creating a conversation, which
+merges on top of the Mind's channel settings:
+
+| | V3 `POST /v3/conversation` | V4 `POST /v4/conversations` |
+|---|---|---|
+| Purpose | `overrides.purpose` | `overrides.purpose` |
+| Language | `overrides.default_language` | `overrides.defaultLanguage` |
+| Lock language | `overrides.multiple_languages: false` | `overrides.multipleLanguages: false` |
+
+Language codes are BCP-47 (`es`, `fr`, `pt-BR`). Setting `multiple_languages`
+to `false` alongside a default language is *meant* to force replies into that
+language regardless of what the user writes.
+
+⚠️ **Treat language as advisory, not enforced.** Measured 2026-08-02: only
+**2 of 5** trials actually replied in the requested language. The Mind sometimes
+narrates the instruction in English rather than obeying it, and in one case
+refused a French directive as off-voice for the persona. There is also **no
+automatic language mirroring** — a Spanish question with no override came back
+in English.
+
+If a user needs reliable single-language output: set the language in
+`overrides.purpose` *as well* (it edits the persona instead of competing with
+it), and verify per clone rather than assuming. Voice works normally on a
+language-configured conversation, and `/v3/voice/synthesize` handles non-Latin
+scripts (verified Spanish, French, Japanese — distinct audio per language).
+
 ### ⚠️ V4 conversation creation is eventually consistent
 
 `POST /v4/conversations` returns a `conversationId` **before the underlying

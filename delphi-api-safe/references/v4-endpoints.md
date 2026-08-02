@@ -200,8 +200,29 @@ require `insights:read`) — see Scopes; most App-Launch keys lack both.
 - `POST /v4/conversations` — create a conversation.
   - Body (all optional): `channelId` (defaults to the owner's API channel),
     `contactId` (omit for an anonymous conversation), `externalId`
-    (caller-supplied idempotency key, 1–512), `overrides` (conversation-level
-    experience overrides, applied after channel-level in the merge chain)
+    (caller-supplied idempotency key, 1–512), `overrides` (see below)
+  - **`overrides`** — conversation-level experience overrides. Merge chain is
+    `experience_config → channel → conversation`, so these win over both.
+
+    | Field | Type | Description |
+    |---|---|---|
+    | `purpose` | string | Override the Mind's purpose for this conversation. Max 10,000 chars. |
+    | `defaultLanguage` | string | BCP-47 code to respond in (`"es"`, `"fr"`, `"pt-BR"`). |
+    | `multipleLanguages` | boolean | When `false` **and** `defaultLanguage` is set, always respond in that language regardless of what the user writes. |
+
+    ```bash
+    curl -sS -X POST "https://api.delphi.ai/v4/conversations" \
+      -H "x-api-key: $DELPHI_API_KEY" -H "Content-Type: application/json" \
+      -d '{"overrides":{"defaultLanguage":"es","multipleLanguages":false}}'
+    ```
+
+    ⚠️ **Language enforcement is advisory, not guaranteed** — same behavior as
+    the V3 equivalent. Measured 2 of 5 trials complied; the Mind sometimes
+    narrates the directive in English instead of obeying it, and with `"fr"` it
+    refused outright as off-voice for the persona. See the V3 note in
+    `v3-endpoints.md` for the full findings. Setting the language inside
+    `overrides.purpose` as well is a stronger lever, since it edits the persona
+    rather than competing with it.
   - Response: `{"data": {"conversationId": "...", "existed": false}}`
   - **`externalId` makes creation idempotent** — a second call with the same
     value returns the existing conversation (`existed: true`). Reusing it with a

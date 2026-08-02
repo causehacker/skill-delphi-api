@@ -26,8 +26,43 @@ Rate limits: 120 requests per 60 seconds per API key. Exceeding returns `429`.
 
 - `POST /v3/conversation`
   - Expected: `200` + `conversation_id`, `created_at`, `initial_message`
-  - Body: `{}` (empty JSON is sufficient) or `{"user_email": "..."}` to associate with a user
-  - Optional body field: `slug` (string) — same clone-scoping purpose as the `slug` field on `/v3/stream`
+  - Body (all optional): `{}` is sufficient.
+    - `slug` — which Mind to start with; defaults to the API key's Mind
+    - `user_email` — links the conversation to that person
+    - `overrides` — **per-conversation experience overrides** (see below)
+  - **`overrides` object** — merges on top of the Mind's channel-level settings:
+    any key you set wins, omitted keys fall back to the Mind's defaults.
+
+    | Field | Type | Description |
+    |---|---|---|
+    | `purpose` | string | Overrides the Mind's default purpose/instructions for this conversation only. Max 10,000 chars. |
+    | `default_language` | string | BCP-47 code the Mind should reply in (`"es"`, `"fr"`, `"pt-BR"`). |
+    | `multiple_languages` | boolean | When `false` **and** `default_language` is set, the Mind should always answer in `default_language` regardless of the language the user writes in. Default behavior allows the Mind to match the user's language. |
+
+    ```bash
+    curl -sS -X POST "https://api.delphi.ai/v3/conversation" \
+      -H "x-api-key: $DELPHI_API_KEY" -H "Content-Type: application/json" \
+      -d '{"user_email":"customer@example.com",
+           "overrides":{"purpose":"Help with a billing issue. Be concise.",
+                        "default_language":"es","multiple_languages":false}}'
+    ```
+
+  - ⚠️ **Language enforcement is a soft instruction, not a hard constraint.**
+    Measured 2026-08-02 on a production clone: with `default_language: "es"` and
+    `multiple_languages: false`, asking in English produced a Spanish reply in
+    only **2 of 5 trials**. Two observed failure modes:
+    1. The Mind **narrates the directive in English** instead of silently obeying
+       it — e.g. *"I need to let you know that this conversation is configured
+       for Spanish."* So it reaches the model as visible prompt text.
+    2. With `"fr"` the Mind **refused**, answering that the language config
+       *"doesn't match Jim Carter III's voice"* — the persona outranked the setting.
+
+    When it does work it works well (fluent, idiomatic Spanish, correct UTF-8).
+    **Don't build a single-language deployment on this alone** — verify per clone,
+    and consider also stating the language in `overrides.purpose`, which is a
+    stronger lever because it edits the persona rather than fighting it.
+  - Note: there is **no automatic language mirroring** by default — a question
+    asked in Spanish with no override came back in English.
 
 - `POST /v3/stream`
   - Expected: `200` + SSE `data:` chunks + `[DONE]`
@@ -76,21 +111,64 @@ Rate limits: 120 requests per 60 seconds per API key. Exceeding returns `429`.
   - Soft-delete a conversation (hidden, not permanently removed)
   - Response: `{ "status": "archived" }`
 
-- `POST /v3/conversation/ask` — **added 2026-08-02.** One-off question with no
-  conversation created.
-  - Body: `question` (required, 1–50,000), `user_email` (loads that visitor's
-    memory), `slug`, `idempotency_key` (1–512)
-  - Response: `{ "answer": "...", "citations": [...] }` — note this is a **flat
-    object**, not wrapped
-  - ⚠️ **Currently returns `502` for all callers.** Same fault as `POST /v4/ask`
-    — deterministic, 0 successes in 24+ attempts across clones and key styles,
-    not a scope issue (a scope failure is `403`). Reported to Delphi 2026-08-02.
+- `POST /v3/conversation/ask` — **added 2026-08-02.** Stateless Q&A: generates a
+  single answer **without creating or using a conversation**.
+  - Body:
+
+    | Field | Type | Required | Description |
+    |---|---|---|---|
+    | `question` | string | **yes** | 1–50,000 chars |
+    | `slug` | string | no | Which Mind to ask; defaults to the key's Mind |
+    | `user_email` | string | no | Loads that visitor's memory (summary, known facts, cross-conversation context). Omit for a fully anonymous, memory-free answer |
+    | `file_urls` | string[] | no | Up to 10 file URLs, indexed like chat uploads before answering |
+    | `idempotency_key` | string | no | 1–512 chars |
+
+  - ⚠️ **Source discrepancy:** Delphi's GitBook page lists `file_urls` but not
+    `idempotency_key`; the live `openapi.json` lists `idempotency_key` but not
+    `file_urls`. Both are recorded above; treat either as best-effort and verify
+    before depending on it.
+  - Response is a **flat object** (not wrapped): `{ "answer": "...", "citations": [...] }`
+  - Citation fields: `type`, `text`, `title`, `url`, `citation_url`, `page_num`,
+    `timestamp`, `tweet_id`, `created_at` (most nullable).
+  - ⚠️ **Currently returns `502` for all callers.** Deterministic — 0 successes in
+    24+ attempts across clones, both key styles, and fully-scoped keys. Not a
+    scope issue (that returns `403`). Reported to Delphi 2026-08-02.
     Workaround: `POST /v3/conversation` then `POST /v3/stream`.
+    **Possible cause:** Delphi's own docs note these endpoints ship with the
+    "Immortal API endpoints" release (PR #2092) and warn against publishing docs
+    before it is live. The endpoint *is* present in the production spec and
+    returns `502 dependency_failure` rather than `404`, which points to a
+    partially-deployed release — routed, but with its backend dependency down —
+    rather than a regression. Re-test after that release lands.
 
 - `GET /v3/conversation/{conversation_id}/insights` — **added 2026-08-02.**
-  - Response: `{ "insights": [...] }`, newest first
-  - Returns existing cards only; insights are generated **asynchronously**, so an
-    empty array on a fresh conversation is normal, not an error.
+  Insight cards surfaced by Delphi's synthesis (e.g. a notable testimonial, or a
+  user worth meeting), attached to the conversation they came from.
+  - Response: `{ "insights": [ { "id", "created_at", "data" } ] }`, newest first
+  - `data` (the insight card):
+
+    | Field | Type | Description |
+    |---|---|---|
+    | `type` | string | `testimonial` \| `user_worth_meeting` |
+    | `version` | number | Card schema version (currently `2`) |
+    | `description` | string | Human-readable summary |
+    | `reasoning` | string[] | Why it was surfaced |
+    | `items` | string[] \| null | Supporting bullets |
+    | `ctaType` | string | `see_answer` \| `view_conversation` \| `share_socials` \| `answer_question` \| `chat_about_it` \| `see_info` \| `reply_to_user` |
+    | `ctaLabel` | string | Display label for the CTA |
+    | `ctaData` | object | Arbitrary CTA payload |
+    | `evidence` | object[] | Each has `type` of `CONVERSATION`, `USER`, or `CONTENT` plus type-specific fields (e.g. `threadId`, `threadSessionId`, `summary`, `sourceMessageId`) |
+    | `compositeScore` | number | Confidence/priority, 0–1 |
+    | `period` | string | Period the insight covers (e.g. `2026-07`) |
+    | `synthesisRunId` | string \| null | Synthesis run that produced it |
+    | `createdAt` | string | ISO 8601 |
+
+  - Returns existing cards only — **it does not trigger synthesis**. Insights are
+    generated asynchronously, so an empty array on a fresh conversation is
+    normal, not an error (verified: `{"insights":[]}` with HTTP 200).
+  - Note `version` and `synthesisRunId` are in the live schema but absent from
+    Delphi's GitBook page; `ctaType` there also lists only a subset of the seven
+    enum values.
 
 - `POST /v3/conversation/{conversation_id}/attachments/presign` — **added
   2026-08-02.** Step 1 of 2 for attaching a file to a conversation.
