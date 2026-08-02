@@ -3,19 +3,34 @@
 
 D30 RETENTION, DEFINED PROPERLY
 --------------------------------
-"Of users who first showed up in the acquisition half of the window, what %
-had another conversation within the following 30 days?"
+"Of users whose FIRST-EVER conversation fell in the acquisition span, what %
+had another conversation within RETURN_DAYS of that first one?"
 
-The window is always the last WINDOW_DAYS (default 60), split into two equal
-halves ending at a reference time:
+The acquisition span and the return horizon are separate knobs:
 
-    [reference-60d ... reference-30d)  <- acquisition half (cohort membership)
-    [reference-30d ... reference]       <- return-check half
+    acquisition span = [reference - WINDOW_DAYS, reference - RETURN_DAYS)
+    retained         = came back within RETURN_DAYS of their own first visit
 
-Every cohort member is guaranteed a full 30 days to return before the return-
-check half ends at `reference` -- so there is NO CENSORING BIAS (unlike the
-2026-08-01 analysis, which had to drop 191 users acquired too recently). By
-construction, this is always a clean, repeatable, rolling number.
+    60d window / 30d return -> 30d acquisition span   (default)
+    90d window / 30d return -> 60d acquisition span   (~2x the cohort)
+
+Every cohort member is guaranteed a full RETURN_DAYS before `reference`, so
+there is NO CENSORING BIAS at any window width.
+
+WIDENING THE WINDOW REQUIRES WIDENING THE EXPORT
+------------------------------------------------
+D30 cohorts are small because only a slice of active users are brand new.
+Widening the acquisition span is the cheapest fix -- but ONLY if the export
+covers the wider span too.
+
+In combo/export mode the candidate list comes from the export. Anyone first
+seen before the export begins is visible only BECAUSE they came back, i.e. a
+survivor, and their retention is wildly inflated. Measured on one clone at a
+90-day window: users first seen inside the export returned at 30.3%, users
+first seen before it returned at 87.1% -- same run, same definition.
+
+So: to report D30 over a 60-day acquisition span, pull a 90-day export. Do not
+just pass --window-days 90 against a 60-day file. main() warns when you do.
 
 THREE DATA SOURCES, ONE CALCULATION
 ------------------------------------
@@ -194,17 +209,37 @@ def load_api_for_emails(emails: list, key: str, style: str, verbose=True) -> dic
 
 # ------------------------------------------------------------- calculation --
 
-def compute_d30(by_user: dict, reference_time: datetime.datetime, window_days: int = 60) -> dict:
-    half = window_days / 2
-    window_start = reference_time - datetime.timedelta(days=window_days)  # full window back
-    mid = reference_time - datetime.timedelta(days=half)                  # boundary between the two halves
+def compute_d30(by_user: dict, reference_time: datetime.datetime, window_days: int = 60,
+                return_days: int = 30) -> dict:
+    """Cohort return rate with the acquisition window DECOUPLED from the return horizon.
 
-    cohort = {e: t for e, t in by_user.items() if t and window_start <= t[0] < mid}
+    acquisition window = [reference - window_days, reference - return_days)
+    a user is retained if they came back within `return_days` of their own first visit
+
+    Every cohort member is guaranteed a full `return_days` before `reference`, so
+    there is no censoring bias regardless of how wide the acquisition window is.
+
+    Widening `window_days` while holding `return_days` at 30 is the cheapest way to
+    grow a D30 cohort: a 60-day window gives 30 days of acquisition, a 90-day window
+    gives 60 -- roughly double the cohort for the same, still-honest D30 definition.
+
+    (An earlier version split the window in half and used that half as BOTH the
+    acquisition span and the return horizon, so --window-days 90 silently produced
+    a 45-day return horizon while still labelling the result "d30". Fixed.)
+    """
+    if return_days >= window_days:
+        raise ValueError(f"return_days ({return_days}) must be < window_days ({window_days}); "
+                         "otherwise the acquisition window is empty.")
+
+    window_start = reference_time - datetime.timedelta(days=window_days)
+    acq_end = reference_time - datetime.timedelta(days=return_days)
+
+    cohort = {e: t for e, t in by_user.items() if t and window_start <= t[0] < acq_end}
     retained_emails = []
     for e, times in cohort.items():
         day0 = times[0]
-        cutoff30 = day0 + datetime.timedelta(days=half)
-        if any(day0 < t <= cutoff30 for t in times[1:]):
+        cutoff = day0 + datetime.timedelta(days=return_days)
+        if any(day0 < t <= cutoff for t in times[1:]):
             retained_emails.append(e)
 
     n = len(cohort)
@@ -212,8 +247,10 @@ def compute_d30(by_user: dict, reference_time: datetime.datetime, window_days: i
     return {
         "reference_time": reference_time.isoformat(),
         "window_days": window_days,
-        "acquisition_half": [window_start.isoformat(), mid.isoformat()],
-        "return_check_half": [mid.isoformat(), reference_time.isoformat()],
+        "return_days": return_days,
+        "acquisition_span_days": window_days - return_days,
+        "acquisition_window": [window_start.isoformat(), acq_end.isoformat()],
+        "return_horizon_days": return_days,
         "cohort_size": n,
         "retained": r,
         "d30_rate_pct": round(r / n * 100, 1) if n else None,
@@ -249,7 +286,12 @@ def main():
     ap.add_argument("--export", help="NDJSON conversation export path.")
     ap.add_argument("--api-key")
     ap.add_argument("--account", help="Account name in keys.json.")
-    ap.add_argument("--window-days", type=int, default=60, help="Total rolling window (split 50/50). Default 60.")
+    ap.add_argument("--window-days", type=int, default=60,
+                    help="Total lookback. Acquisition span = window-days minus return-days. "
+                         "Default 60 (=30d acquisition). Use 90 for a 60d acquisition span -- "
+                         "roughly double the cohort at the same D30 definition.")
+    ap.add_argument("--return-days", type=int, default=30,
+                    help="Return horizon in days (the '30' in D30). Default 30.")
     ap.add_argument("--exclude-email", action="append", default=[], help="Additional placeholder email(s) to exclude (repeatable).")
     ap.add_argument("--top", type=int, default=10)
     ap.add_argument("--json", action="store_true")
@@ -267,9 +309,12 @@ def main():
         sys.exit("Provide --export, and/or --account/--api-key.")
 
     coverage = None
+    export_first_ts = None   # earliest activity the export actually covers
     if args.export and key:
         mode = "combo"
         export_by_user, total_threads = load_from_export(args.export, exclude)
+        _t = [t for ts in export_by_user.values() for t in ts]
+        export_first_ts = min(_t) if _t else None
         # cheap full-audience sweep, for coverage reporting only (no per-user pulls here)
         print("sweeping live audience for coverage check...", file=sys.stderr)
         live_users = aa.sweep_users(key)
@@ -287,6 +332,7 @@ def main():
         mode = "export-only"
         by_user, total_threads = load_from_export(args.export, exclude)
         all_times = [t for times in by_user.values() for t in times]
+        export_first_ts = min(all_times) if all_times else None
         reference_time = max(all_times) if all_times else datetime.datetime.now(datetime.timezone.utc)
     else:
         mode = "api-only"
@@ -298,7 +344,26 @@ def main():
                   open(args.dump_history, "w"))
         print(f"history dump -> {args.dump_history} ({len(by_user)} users)", file=sys.stderr)
 
-    result = compute_d30(by_user, reference_time, args.window_days)
+    # GUARD: widening --window-days past what the export actually covers silently
+    # inflates the rate. Candidates come from the export, so anyone first-seen
+    # before it is only visible BECAUSE they returned -- a survivor. Measured on
+    # one clone: 30.3% for users inside the export vs 87.1% for users before it,
+    # same window, same run. Widen the EXPORT, not just the window.
+    if args.export and export_first_ts is not None:
+        needed_start = reference_time - datetime.timedelta(days=args.window_days)
+        if needed_start < export_first_ts:
+            short_by = (export_first_ts - needed_start).days
+            print(
+                f"\n*** WARNING: --window-days {args.window_days} reaches "
+                f"{short_by} day(s) BEFORE this export begins "
+                f"({export_first_ts.date()}).\n"
+                f"    Users first seen in that gap appear only if they came back, so they are\n"
+                f"    survivors and will inflate the rate. Either pull an export covering\n"
+                f"    >= {args.window_days} days, or drop --window-days back to "
+                f"{(reference_time - export_first_ts).days}.\n",
+                file=sys.stderr)
+
+    result = compute_d30(by_user, reference_time, args.window_days, args.return_days)
     result["mode"] = mode
     if style:
         result["key_style"] = style
@@ -320,18 +385,19 @@ def main():
     print(f"D30 RETENTION  [mode: {mode}]{style_note}")
     print("=" * 72)
     print(f"  Reference time (window end) ... {result['reference_time']}")
-    print(f"  Window ......................... {result['window_days']} days "
-          f"({result['window_days']//2}d acquisition + {result['window_days']//2}d return-check)")
+    print(f"  Window ......................... {result['window_days']}d lookback = "
+          f"{result['acquisition_span_days']}d acquisition + {result['return_days']}d return horizon")
     if coverage:
         print(f"\n  COVERAGE (export vs live audience):")
         print(f"    Live real audience (API) ....... {coverage['live_real_audience']}")
         print(f"    Active in export window ......... {coverage['export_active_users']}")
         print(f"    Coverage ......................... {coverage['coverage_pct']}%")
         print(f"    Registered but silent in export .. {coverage['registered_but_absent_from_export']}")
-    print(f"\n  Cohort (first conversation in acquisition half) ... {result['cohort_size']}")
-    print(f"  Returned within 30 days ............................ {result['retained']}")
-    print(f"\n  >>> D30 RETENTION RATE = {result['retained']}/{result['cohort_size']} = {result['d30_rate_pct']}%")
-    print(f"      (narrow: only users first acquired in the {result['window_days']//2}-day acquisition window)")
+    print(f"\n  Cohort (first-ever conversation in acquisition span) ... {result['cohort_size']}")
+    print(f"  Returned within {result['return_days']} days .............................. {result['retained']}")
+    print(f"\n  >>> D{result['return_days']} RETENTION RATE = {result['retained']}/{result['cohort_size']} = {result['d30_rate_pct']}%")
+    print(f"      (narrow: only users whose FIRST-EVER visit fell in the "
+          f"{result['acquisition_span_days']}-day acquisition span)")
 
     ret = result["retention"]
     nc = ret["conversers"]
