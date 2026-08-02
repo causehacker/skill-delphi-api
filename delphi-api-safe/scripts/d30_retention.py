@@ -221,6 +221,18 @@ def compute_d30(by_user: dict, reference_time: datetime.datetime, window_days: i
     }
 
 
+def compute_broad_retention(by_user: dict) -> dict:
+    """Reuses audience_audit.py's return-rate/multi-day-rate methodology (this
+    repo's documented 'truest retention signal') over the FULL set of real,
+    non-placeholder users with authoritative history in `by_user` -- not just
+    the narrow D30 acquisition-half cohort. Much larger N, so far less
+    sensitive to the small-cohort fragility a strict D30 window can have.
+    No extra API calls: by_user's per-user history was already pulled live."""
+    records = [{"email": e, "convos": [{"created_at": t.isoformat(), "medium": None} for t in times]}
+               for e, times in by_user.items()]
+    return aa.compute_retention(records)
+
+
 def top_engaged(by_user, n=10):
     rows = sorted(by_user.items(), key=lambda kv: -len(kv[1]))[:n]
     out = []
@@ -286,6 +298,10 @@ def main():
         result["coverage"] = coverage
     result["top_engaged"] = top_engaged(by_user, args.top)
     result.pop("retained_emails")  # PII -- not for default output
+    # Broader retention (return rate / multi-day rate) over ALL real users found
+    # active in the window -- not just the narrow D30 acquisition-half cohort.
+    # Free: derived from the same authoritative by_user history already pulled.
+    result["retention"] = compute_broad_retention(by_user)
 
     if args.json:
         print(json.dumps(result, indent=2))
@@ -307,6 +323,22 @@ def main():
     print(f"\n  Cohort (first conversation in acquisition half) ... {result['cohort_size']}")
     print(f"  Returned within 30 days ............................ {result['retained']}")
     print(f"\n  >>> D30 RETENTION RATE = {result['retained']}/{result['cohort_size']} = {result['d30_rate_pct']}%")
+    print(f"      (narrow: only users first acquired in the {result['window_days']//2}-day acquisition window)")
+
+    ret = result["retention"]
+    nc = ret["conversers"]
+    pct = lambda x: f"{100*x/nc:.1f}%" if nc else "n/a"
+    print(f"\n  BROADER RETENTION  (base: ALL {nc} real, non-placeholder users active in this "
+          f"{result['window_days']}-day window -- much larger sample than the D30 cohort)")
+    print(f"    Multi-day (>=2 distinct days): {ret['multi_day']}/{nc}  ({pct(ret['multi_day'])})   <- truest retention signal")
+    print(f"    Return rate (>=2 conversations): {ret['returners_2plus']}/{nc}  ({pct(ret['returners_2plus'])})")
+    print(f"    One-and-done: {ret['one_and_done']}  ({pct(ret['one_and_done'])})")
+    print(f"    Median conversations/user: {ret['median_per_converser']:.0f}   (mean {ret['mean_per_converser']}, "
+          f"max {ret['max_per_user']} -- a high max can skew the mean, median is the honest center)")
+    print("    Depth:  " + "  ".join(f"{k}:{v}" for k, v in ret["depth_distribution"].items()))
+    print("    Recency (days since last convo):  "
+          + "  ".join(f"{k}:{v}" for k, v in ret["recency_days_since_last"].items()))
+
     print(f"\n  Top {len(result['top_engaged'])} most-engaged users in this data:")
     for row in result["top_engaged"]:
         print(f"    {row['email_masked']:<28} {row['conversations']:>3} convos   last seen {row['last_seen'][:10]}")
