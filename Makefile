@@ -27,7 +27,7 @@ smoke-v4:
 	python3 scripts/run_smoke.py --config smoke-config.json --api v4
 
 package:
-	/Users/jc3/.openclaw/workspace/.venv-skillpack/bin/python /opt/homebrew/lib/node_modules/openclaw/skills/skill-creator/scripts/package_skill.py ./delphi-api-safe ./dist
+	python3 scripts/package_skill.py ./delphi-api-safe ./dist
 
 docs:
 	@echo ""
