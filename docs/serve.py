@@ -167,13 +167,22 @@ class ProxyHandler(http.server.SimpleHTTPRequestHandler):
         else:
             super().do_GET()
 
+    def _is_sse(self):
+        """SSE endpoints that must stream incrementally rather than buffer.
+
+        v3: POST /v3/stream
+        v4: POST /v4/conversations/{id}/messages/stream  (same CloneResponse frames)
+        """
+        path = self.path.split("?", 1)[0]
+        return path.startswith("/api/v3/stream") or path.endswith("/messages/stream")
+
     def do_POST(self):
         if self._is_proxy():
             if self.path.startswith("/api/v3/voice/stream"):
                 self._proxy_binary()
             elif self.path.startswith("/api/v3/voice/synthesize") and "stream=true" in self.path:
                 self._proxy_binary()
-            elif self.path.startswith("/api/v3/stream"):
+            elif self._is_sse():
                 self._proxy_stream()
             else:
                 self._proxy("POST")

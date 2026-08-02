@@ -2,7 +2,11 @@
 
 A production-ready, non-technical-safe skill package for testing and troubleshooting the Delphi **V3** API (conversations, streaming, voice, knowledge-base search) and the Delphi **V4** Developer Platform API (contacts, knowledge-base writes, outbound messaging, webhooks, integrations).
 
-> **V3 and V4 are complementary, not sequential.** V4 does *not* contain V3's chat, stream, voice, or search endpoints, and V3 has none of V4's contacts, content-write, or webhook endpoints. Don't plan a migration — pick the surface that has the endpoint you need. See [`delphi-api-safe/references/v4-endpoints.md`](delphi-api-safe/references/v4-endpoints.md) for the full V4 map.
+> **Both surfaces now have chat.** As of 2026-08-02 V4 gained conversations, SSE streaming, and stateless ask — so route by *capability*, not version. V4 additionally offers a **synchronous** send (no SSE parsing) and idempotent conversation creation. Still V3-only: voice, knowledge-base search, and the KB agent. Still V4-only: contacts/CRM, content writes, outbound SMS/email, webhooks, integrations. See [`delphi-api-safe/references/v4-endpoints.md`](delphi-api-safe/references/v4-endpoints.md) for the full map.
+>
+> ⚠️ **Two known issues** (verified 2026-08-02): the stateless `ask` endpoints (`/v3/conversation/ask`, `/v4/ask`) return `502` for all callers — reported to Delphi. And `POST /v4/conversations` is eventually consistent: sending a message immediately returns `404 "Thread not found"`; retry on 404 with ~1s backoff (ready in ~2–6s).
+>
+> ⚠️ **Key choice matters more than version choice.** Legacy `dsk-` keys are unscoped and work everywhere. Newer `dlph_` App-Launch keys are *scoped* and most lack `conversations:write`, so they `403` on V4 chat despite being newer — their advantage is the 10k req/min rate limit, not access breadth.
 
 ## What this is
 
@@ -19,7 +23,8 @@ This repo contains:
 ## What this skill does
 
 - Runs safe Delphi V3 checks for conversation, stream, search, agent, users, tags, and user info endpoints
-- Runs safe Delphi V4 checks for profile, contacts, content, integrations, and webhook endpoints — read-only by default, with destructive endpoints (`/v4/send`, `/v4/data-deletion-requests`, content delete, integration publish) deliberately excluded from the harness
+- Runs safe Delphi V4 checks for profile, conversations, contacts, content, integrations, and webhook endpoints — read-only by default, with destructive endpoints (`/v4/send`, `/v4/data-deletion-requests`, content delete, integration publish) deliberately excluded from the harness
+- Distinguishes *scope gaps* (reported as SKIP — a provisioning issue) from real failures, and labels known platform outages so the harness doesn't go red for something you can't fix
 - Handles self-discovery first, then asks for missing required inputs
 - Never invents sensitive/user-specific values (emails, API keys)
 - Produces pass/fail matrices and incident-ready reports
@@ -136,7 +141,7 @@ secret writes — those mutate real-world state and should be run by hand.
 ## Interactive API Reference (browser)
 
 A single-page interactive explorer with a **V3 / V4 toggle** in the top bar —
-29 V3 endpoints and 42 V4 endpoints — with a live test harness, streaming SSE
+33 V3 endpoints and 49 V4 endpoints — with a live test harness, streaming SSE
 support, and curl copy/paste.
 
 ### Quick start
@@ -156,11 +161,11 @@ python3 docs/serve.py --port 9000  # custom port
 ### What it does
 
 - **V3 / V4 toggle** in the top bar — switches the whole explorer between the two surfaces
-- **V3: 29 endpoint cards** (Conversations, Questions, Users, Tags, User Info, Search, Clone, Voice)
-- **V4: 42 endpoint cards** (Profile, Contacts, Contact Tags, Contact Properties, Content, Generate & Send, LLM, Thread Sessions, Webhooks, Integrations, Data Deletion)
-- **Safety banners on V4** — endpoints that change real state (send, delete, publish) get a red warning; metered ones (generate, LLM) get an amber one
+- **V3: 33 endpoint cards** (Conversations — now incl. ask/insights/attachments, Questions, Users, Tags, User Info, Search, Clone, Voice)
+- **V4: 49 endpoint cards** (Profile, **Conversations**, Contacts, Contact Tags, Contact Properties, Content, Generate & Send, LLM, Thread Sessions, Webhooks, Integrations, Data Deletion)
+- **Safety banners** — endpoints that change real state (send, delete, publish) get a red warning; metered ones (generate, LLM, chat) amber; the two known-broken `ask` endpoints get a purple outage notice
 - **Send button** fires requests through a local CORS proxy — responses render inline. The proxy is version-agnostic, so `/api/v3/*` and `/api/v4/*` both work
-- **SSE streaming** for `/v3/stream` — tokens appear live with a blinking cursor, token counter, and raw SSE toggle
+- **SSE streaming** for `/v3/stream` *and* `/v4/conversations/{id}/messages/stream` — tokens appear live with a blinking cursor, token counter, and raw SSE toggle (both use the same `CloneResponse` frame contract)
 - **Curl copy** on every endpoint — one click to clipboard, ready to paste in terminal
 - **Auto user lookup** — enter an email in the top bar and the `user_id` auto-resolves and fills into all endpoint cards
 - **Field validation** — required fields highlight red with a shake animation before sending

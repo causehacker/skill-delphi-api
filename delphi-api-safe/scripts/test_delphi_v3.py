@@ -389,6 +389,56 @@ def test_search_content(api_key: str, query: str) -> Dict[str, Any]:
     }
 
 
+def test_conversation_insights(api_key: str, conversation_id: str) -> Dict[str, Any]:
+    """GET /v3/conversation/{id}/insights — insights are generated asynchronously,
+    so an empty list on a fresh conversation is a PASS, not a failure."""
+    st, body = http_json("GET", f"/conversation/{conversation_id}/insights", api_key)
+    insights = None
+    if st == "200":
+        try:
+            insights = json.loads(body).get("insights")
+        except Exception:
+            insights = None
+    ok = st == "200" and isinstance(insights, list)
+    return {
+        "conversation_insights": "PASS" if ok else "FAIL",
+        "conversation_insights_http": st,
+        "insight_count": len(insights) if isinstance(insights, list) else 0,
+        "note": "" if ok else (f"insights http {st}" if st != "200" else "unexpected response format"),
+    }
+
+
+def test_ask(api_key: str, question: str) -> Dict[str, Any]:
+    """POST /v3/conversation/ask — one-off question, no conversation created.
+
+    KNOWN OUTAGE (reported 2026-08-02): returns 502 dependency_failure for all
+    callers on both v3 and v4. Not a key/scope/payload problem — a scope failure
+    would be 403. Reported separately so a 502 here is surfaced as a known issue
+    rather than looking like a broken key.
+    """
+    st, body = http_json("POST", "/conversation/ask", api_key, {"question": question}, max_time=90)
+    answer = ""
+    if st == "200":
+        try:
+            answer = json.loads(body).get("answer", "") or ""
+        except Exception:
+            pass
+    ok = st == "200" and bool(answer)
+    note = ""
+    if not ok:
+        note = ("KNOWN OUTAGE: /conversation/ask returns 502 platform-wide "
+                "(reported 2026-08-02) — not a problem with this key"
+                if st == "502" else
+                (f"ask http {st}" if st != "200" else "no answer in response"))
+    return {
+        "ask": "PASS" if ok else "FAIL",
+        "ask_http": st,
+        "known_outage": st == "502",
+        "answer_preview": answer[:160],
+        "note": note,
+    }
+
+
 def test_agent_run(api_key: str, objective: str, thinking_time: int = 10) -> Dict[str, Any]:
     """Test the autonomous knowledge-base agent via POST /v3/agent/run.
 
@@ -537,6 +587,8 @@ def main() -> None:
     ap.add_argument("--test-voice", action="store_true", help="Include voice streaming test")
     ap.add_argument("--test-search", action="store_true", help="Include knowledge base search tests")
     ap.add_argument("--search-query", default="What is your background?", help="Query string for search tests")
+    ap.add_argument("--test-ask", action="store_true", help="Include POST /v3/conversation/ask (KNOWN OUTAGE — returns 502 platform-wide as of 2026-08-02)")
+    ap.add_argument("--ask-question", default="What is your background?", help="Question for the ask test")
     ap.add_argument("--test-agent", action="store_true", help="Include the knowledge-base agent test (POST /v3/agent/run — slower/heavier than search)")
     ap.add_argument("--agent-objective", default="Summarize the key themes covered in the knowledge base.", help="Objective string for the agent/run test")
     ap.add_argument("--agent-thinking-time", type=int, default=10, help="thinking_time budget in seconds (1-120) for the agent/run test")
@@ -560,6 +612,7 @@ def main() -> None:
         # Test conversation history if we got a conversation_id
         if chat_cid:
             output["conversation_history"] = test_conversation_history(args.api_key, chat_cid)
+            output["conversation_insights"] = test_conversation_insights(args.api_key, chat_cid)
 
         # Test conversation list if we have a user email
         if args.user_email:
@@ -581,6 +634,9 @@ def main() -> None:
     if args.test_search:
         output["search_query"] = test_search_query(args.api_key, args.search_query)
         output["search_content"] = test_search_content(args.api_key, args.search_query)
+
+    if args.test_ask:
+        output["ask"] = test_ask(args.api_key, args.ask_question)
 
     if args.test_agent:
         output["agent_run"] = test_agent_run(args.api_key, args.agent_objective, args.agent_thinking_time)

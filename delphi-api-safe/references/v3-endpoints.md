@@ -3,7 +3,11 @@
 This file captures endpoint behavior learned from real tests, cross-checked
 against the live spec at `GET /v3/openapi.json` (requires a valid `x-api-key`;
 the default UA is 403'd by Cloudflare, same as other endpoints — set a custom
-`User-Agent`). Last cross-checked 2026-08-01 against `openapi: 3.1.0`.
+`User-Agent`).
+
+**Last cross-checked 2026-08-02: 30 paths / 34 operations** (up from 26 / 30 —
+Delphi added `conversation/ask`, conversation insights, and the two-step
+attachment flow). V4 gained a parallel set the same day; see `v4-endpoints.md`.
 
 Base URL: `https://api.delphi.ai`
 Authentication: `x-api-key` header on every request (key scoped to a single clone).
@@ -71,6 +75,37 @@ Rate limits: 120 requests per 60 seconds per API key. Exceeding returns `429`.
 - `DELETE /v3/conversation/{conversation_id}`
   - Soft-delete a conversation (hidden, not permanently removed)
   - Response: `{ "status": "archived" }`
+
+- `POST /v3/conversation/ask` — **added 2026-08-02.** One-off question with no
+  conversation created.
+  - Body: `question` (required, 1–50,000), `user_email` (loads that visitor's
+    memory), `slug`, `idempotency_key` (1–512)
+  - Response: `{ "answer": "...", "citations": [...] }` — note this is a **flat
+    object**, not wrapped
+  - ⚠️ **Currently returns `502` for all callers.** Same fault as `POST /v4/ask`
+    — deterministic, 0 successes in 24+ attempts across clones and key styles,
+    not a scope issue (a scope failure is `403`). Reported to Delphi 2026-08-02.
+    Workaround: `POST /v3/conversation` then `POST /v3/stream`.
+
+- `GET /v3/conversation/{conversation_id}/insights` — **added 2026-08-02.**
+  - Response: `{ "insights": [...] }`, newest first
+  - Returns existing cards only; insights are generated **asynchronously**, so an
+    empty array on a fresh conversation is normal, not an error.
+
+- `POST /v3/conversation/{conversation_id}/attachments/presign` — **added
+  2026-08-02.** Step 1 of 2 for attaching a file to a conversation.
+  - Body: `file_name` (1–255), `content_type` (1–255), `file_size`
+    (**≤10,485,760 bytes / 10 MB**)
+  - Response: `{ "attachment_id": "...", "upload_url": "..." }` — `upload_url` is
+    a presigned **S3 PUT**; upload the bytes directly to it.
+
+- `POST /v3/conversation/{conversation_id}/attachments/{attachment_id}/complete`
+  — **added 2026-08-02.** Step 2: verify and index the uploaded file.
+  - Response: `{ "attachment_id", "status", "reason"? }`
+  - `status` is `indexed` **or** `skipped`. When `skipped`, `reason` is one of
+    `no_extractable_content`, `indexing_unavailable`, `unsupported_media_type`.
+  - **A `skipped` result still returns HTTP 200** — check `status`, not just the
+    status code, or you'll believe a file was indexed when it wasn't.
 
 ## Questions
 

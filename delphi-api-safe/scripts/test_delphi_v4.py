@@ -27,6 +27,7 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from typing import Any, Dict, Optional, Tuple
 
 BASE = "https://api.delphi.ai/v4"
@@ -150,6 +151,93 @@ def test_content(api_key: str) -> Tuple[Dict[str, Any], Optional[str]]:
     return res, content_id
 
 
+def test_conversations(api_key: str, message: str) -> Dict[str, Any]:
+    """Exercise the v4 conversational surface added 2026-08-02.
+
+    Gated on `conversations:write` — most dlph_ App-Launch keys lack it and get
+    403 here while legacy dsk- keys succeed. A 403 is reported as a scope gap,
+    not a generic failure, because the fix is provisioning rather than code.
+    """
+    out: Dict[str, Any] = {}
+    st, parsed, raw = http_json("POST", "/conversations", api_key, {})
+    payload = unwrap(parsed)
+    cid = payload.get("conversationId") if isinstance(payload, dict) else None
+    has_scope = st == "200"
+    out["conversations"] = "PASS" if cid else ("SKIP" if st == "403" else "FAIL")
+    out["conversations_http"] = st
+    out["conversations_write_scope"] = has_scope
+    out["conversation_id"] = cid
+    if st == "403":
+        out["note"] = "key lacks `conversations:write` — provisioning gap, not a code fault"
+        return out
+    if not cid:
+        out["note"] = err_note(st, parsed, raw)
+        return out
+
+    # Synchronous send — the main ergonomic win over v3 (no SSE parsing).
+    #
+    # POST /v4/conversations is EVENTUALLY CONSISTENT: it returns a
+    # conversationId before the underlying thread exists, so an immediate send
+    # gets 404 {"code":"resource_not_found","message":"Thread not found"}.
+    # Measured 2026-08-02: the thread became ready after ~2-6s. Retry on 404
+    # rather than sleeping a fixed amount.
+    attempts = 0
+    for attempt in range(6):
+        attempts = attempt + 1
+        st2, parsed2, raw2 = http_json("POST", f"/conversations/{cid}/messages", api_key,
+                                       {"text": message}, max_time=120)
+        if st2 != "404":
+            break
+        time.sleep(1.0)
+    p2 = unwrap(parsed2)
+    ok2 = st2 == "200" and isinstance(p2, dict) and bool(p2.get("text"))
+    out["messages_sync"] = "PASS" if ok2 else "FAIL"
+    out["messages_sync_http"] = st2
+    out["messages_sync_attempts"] = attempts
+    if attempts > 1:
+        out["messages_sync_note"] = (f"thread not ready on first try — succeeded on attempt {attempts} "
+                                     "(POST /conversations is eventually consistent)")
+    if isinstance(p2, dict):
+        out["reply_preview"] = (p2.get("text") or "")[:160]
+        out["citations"] = len(p2.get("citations") or [])
+    if not ok2:
+        out["messages_sync_note"] = err_note(st2, parsed2, raw2)
+
+    # insights — async, so an empty list is a PASS
+    st3, parsed3, raw3 = http_json("GET", f"/conversations/{cid}/insights?limit=5", api_key)
+    ins = unwrap(parsed3)
+    ok3 = st3 == "200" and isinstance(ins, list)
+    out["insights"] = "PASS" if ok3 else ("SKIP" if st3 == "403" else "FAIL")
+    out["insights_http"] = st3
+    out["insight_count"] = len(ins) if isinstance(ins, list) else 0
+    if st3 == "403":
+        out["insights_note"] = "key lacks `insights:read`"
+    return out
+
+
+def test_ask(api_key: str, question: str) -> Dict[str, Any]:
+    """POST /v4/ask — stateless Q&A.
+
+    KNOWN OUTAGE (reported 2026-08-02): 502 dependency_failure for all callers on
+    both v3 and v4. Not a scope problem — that returns 403 naming the scope.
+    """
+    st, parsed, raw = http_json("POST", "/ask", api_key, {"question": question}, max_time=90)
+    payload = unwrap(parsed)
+    answer = payload.get("answer") or payload.get("text") if isinstance(payload, dict) else None
+    ok = st == "200" and bool(answer)
+    note = ""
+    if not ok:
+        note = ("KNOWN OUTAGE: /v4/ask returns 502 platform-wide (reported 2026-08-02) "
+                "— not a problem with this key" if st == "502" else err_note(st, parsed, raw))
+    return {
+        "ask": "PASS" if ok else "FAIL",
+        "ask_http": st,
+        "known_outage": st == "502",
+        "answer_preview": (answer or "")[:160],
+        "note": note,
+    }
+
+
 def test_generate(api_key: str, prompt: str, idem: Optional[str]) -> Dict[str, Any]:
     """METERED — reserves one slot from the owner's daily budget (unless replayed)."""
     body: Dict[str, Any] = {"prompt": prompt}
@@ -228,6 +316,13 @@ def main() -> None:
     ap.add_argument("--test-llm", action="store_true",
                     help="Include POST /v4/llm/chat/completions — costs tokens.")
     ap.add_argument("--llm-prompt", default="Reply with exactly: OK")
+    ap.add_argument("--test-conversations", action="store_true",
+                    help="Include the v4 conversational surface (create + synchronous send + "
+                         "insights). Needs `conversations:write`; invokes the model.")
+    ap.add_argument("--conversation-message", default="Reply in one short sentence.")
+    ap.add_argument("--test-ask", action="store_true",
+                    help="Include POST /v4/ask (KNOWN OUTAGE — 502 platform-wide as of 2026-08-02).")
+    ap.add_argument("--ask-question", default="What is your background?")
     args = ap.parse_args()
     key = resolve_key(args)
 
@@ -261,23 +356,42 @@ def main() -> None:
         "webhook_subscriptions", "/webhook-subscriptions", key,
         nested=("subscriptions",), want="list")
 
+    if args.test_conversations:
+        out["conversations"] = test_conversations(key, args.conversation_message)
+    if args.test_ask:
+        out["ask"] = test_ask(key, args.ask_question)
     if args.test_generate:
         out["generate"] = test_generate(key, args.generate_prompt, args.idempotency_key)
     if args.test_llm:
         out["llm"] = test_llm(key, args.llm_prompt)
 
-    # Roll-up: every sub-dict carrying a PASS/FAIL verdict counts once.
-    checks = []
+    # Roll-up. Two categories are deliberately NOT counted as failures:
+    #   SKIP          — the key lacks a scope; a provisioning gap, not a fault
+    #   known_outage  — a documented platform-side bug (e.g. /ask 502)
+    # Counting either would make the harness go red for something the caller
+    # cannot fix, which trains people to ignore the result.
+    checks, skipped, outages = [], [], []
     for name, v in out.items():
-        if isinstance(v, dict):
-            verdict = v.get(name)
-            if verdict in ("PASS", "FAIL"):
-                checks.append((name, verdict))
+        if not isinstance(v, dict):
+            continue
+        if v.get("known_outage"):
+            outages.append(name)
+            continue
+        for label, verdict in v.items():
+            if verdict == "SKIP":
+                skipped.append(f"{name}.{label}" if label != name else name)
+            elif verdict in ("PASS", "FAIL") and (label == name or label in
+                    ("messages_sync", "insights", "conversations")):
+                checks.append((f"{name}.{label}" if label != name else name, verdict))
+
+    failed = [n for n, v in checks if v == "FAIL"]
     out["summary"] = {
-        "overall": "PASS" if checks and all(v == "PASS" for _, v in checks) else "FAIL",
+        "overall": "PASS" if checks and not failed else "FAIL",
         "checks": len(checks),
         "passed": sum(1 for _, v in checks if v == "PASS"),
-        "failed": [n for n, v in checks if v == "FAIL"],
+        "failed": failed,
+        "skipped_missing_scope": skipped,
+        "known_outages": outages,
     }
 
     print(json.dumps(out, indent=2))

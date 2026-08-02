@@ -7,21 +7,26 @@ description: Safely operate and troubleshoot the Delphi V3 API (conversations, s
 
 Run Delphi API tests in a non-destructive, user-safe way. Prefer reproducible checks and clear pass/fail outputs.
 
-Delphi exposes **two live API surfaces**. They are complementary, not
-sequential — see "Choosing V3 vs V4" below before picking one.
+Delphi exposes **two live API surfaces**. As of 2026-08-02 **both have chat** —
+V4 gained conversations, streaming, and stateless ask. See "Choosing V3 vs V4".
 
 | | V3 — "Delphi External API" | V4 — "Delphi Developer Platform API" |
 |---|---|---|
 | Base | `https://api.delphi.ai/v3` | `https://api.delphi.ai/v4` |
-| Covers | chat, SSE streaming, voice, KB search, agent, users, tags | contacts/CRM, KB **writes**, outbound SMS/email, webhooks, integrations, LLM passthrough |
+| Size | 30 paths / 34 ops | 47 paths / 65 ops |
+| Chat | ✅ create + SSE stream | ✅ create + SSE stream **+ synchronous send** |
+| Only here | voice, KB search, agent, audience analytics | contacts/CRM, KB **writes**, SMS/email, webhooks, integrations, LLM passthrough |
 | Envelope | bare objects | `{"data": ...}` (not uniform — check per endpoint) |
 | Errors | `{"detail": "..."}` | `{"type","code","message"}` |
 | Casing | `snake_case` | `camelCase` |
+| Auth | key valid or not | **scoped keys** — a `403` names the missing scope |
 | Reference | `references/v3-endpoints.md` | `references/v4-endpoints.md` |
 
-The same `x-api-key` works on both (verified) — a V3 `dsk-` key returns 200 on
-V4 read endpoints. V4 additionally documents a **scoped-key model**, so a `403`
-on V4 often means a missing scope rather than a dead key.
+**Key choice matters more than version choice.** A legacy `dsk-` key is
+unscoped and works on *everything* in both surfaces. Newer `dlph_` App-Launch
+keys are scoped and most **lack `conversations:write`**, so they `403` on V4
+chat despite being the newer key style. Their advantage is the 10k req/min rate
+limit, not access breadth. Verify with `POST /v4/conversations` before assuming.
 
 ## Core rules
 
@@ -40,6 +45,9 @@ on V4 often means a missing scope rather than a dead key.
     - `PUT /v3/conversation/{id}/title` — update conversation title
     - `POST /v3/conversation/{id}/append-clone-message` — inject clone message
     - `DELETE /v3/conversation/{id}` — soft-delete conversation
+    - `POST /v3/conversation/ask` — one-off question, no conversation created ⚠️ **currently 502**
+    - `GET /v3/conversation/{id}/insights` — insight cards (async; empty is normal)
+    - `POST /v3/conversation/{id}/attachments/presign` + `.../{attachment_id}/complete` — two-step file attach (≤10 MB; `status` may be `skipped` on a 200)
   - **Questions**: `GET /v3/questions` — suggested questions (pinned/unpinned/all)
   - **Voice**:
     - `POST /v3/voice/stream` — binary PCM audio streaming (24kHz, 16-bit, mono)
@@ -68,7 +76,14 @@ on V4 often means a missing scope rather than a dead key.
     - `POST /v3/search/content` — search content sources by title or description
   - **Agent**: `POST /v3/agent/run` — autonomous knowledge-base agent; takes an `objective` and returns a synthesized `finalResult` plus a reasoning trace, rather than raw chunks. Heavier than search — use it when the user wants a synthesized answer or multi-hop reasoning, not a chunk lookup.
 
-  Supported/tested **V4** coverage (58 operations; full detail in `references/v4-endpoints.md`):
+  Supported/tested **V4** coverage (65 operations; full detail in `references/v4-endpoints.md`):
+  - **Conversations** (added 2026-08-02 — requires `conversations:write`):
+    - `POST /v4/conversations` — create; `externalId` makes it idempotent (409 on reuse with different input)
+    - `POST /v4/conversations/{id}/messages` — **send and wait, no SSE parsing** (the main ergonomic win over V3)
+    - `POST /v4/conversations/{id}/messages/stream` — SSE, reuses V3's `CloneResponse` frame contract verbatim
+    - `GET /v4/conversations/{id}/insights` — insight cards (needs `insights:read`; async, empty is normal)
+    - `POST /v4/conversations/{id}/attachments/presign` + `.../complete` — two-step file attach (≤10 MB)
+    - `POST /v4/ask` — stateless Q&A ⚠️ **currently 502**
   - **Profiles**: `GET /v4/profile` (identity discovery — the V4 analogue of `/v3/clone`), `GET /v4/profile/questions` (replaces `/v3/questions`), `GET /v4/profiles/{username}`
   - **Contacts** (the V4 evolution of `/v3/users`):
     - `GET /v4/contacts` — cohort list with far richer server-side filtering (search, tags, access tier, opt-in, interaction counts, date ranges, sort)
@@ -102,9 +117,13 @@ Ask what the user is trying to *do*, then route:
 
 | The user wants to… | Surface | Endpoint |
 |---|---|---|
-| Chat / stream a reply, test a clone works | **V3** | `/v3/conversation` + `/v3/stream` |
-| Voice audio or TTS | **V3** | `/v3/voice/*` |
-| Search or reason over the knowledge base | **V3** | `/v3/search/query`, `/v3/agent/run` |
+| Test that a clone works (smoke test) | **V3** | `/v3/conversation` + `/v3/stream` — the established harness |
+| Chat, streaming tokens | **either** | `/v3/stream` or `/v4/conversations/{id}/messages/stream` (same SSE frame contract) |
+| Chat, **without** parsing SSE | **V4** | `POST /v4/conversations/{id}/messages` — synchronous, returns the full reply |
+| Avoid duplicate conversations on retry | **V4** | `POST /v4/conversations` with `externalId` |
+| Attach a file to a conversation | **either** | two-step presign → complete (both surfaces, added 2026-08-02) |
+| Voice audio or TTS | **V3 only** | `/v3/voice/*` |
+| Search or reason over the knowledge base | **V3 only** | `/v3/search/query`, `/v3/agent/run` |
 | Audience sizing / retention analytics | **V3** | `/v3/users` + `/v3/conversation/list` (`scripts/audience_audit.py`) |
 | Add / edit / delete knowledge-base content | **V4** | `/v4/content` |
 | Manage contacts, custom fields, segments | **V4** | `/v4/contacts`, `/v4/contact-properties/*`, `/v4/contacts/bulk/tags` |
@@ -112,16 +131,41 @@ Ask what the user is trying to *do*, then route:
 | Text or email a contact | **V4** | `/v4/send` (consent enforced server-side) |
 | React to Delphi events | **V4** | `/v4/webhook-subscriptions` or `/v4/integrations` |
 | Use Delphi as a plain LLM | **V4** | `/v4/llm/chat/completions` |
+| One-shot Q&A, no conversation state | ⚠️ **neither** | `/v3/conversation/ask` and `/v4/ask` both return `502` — see below |
 
 Rules of thumb:
 
-- **Anything conversational is V3.** V4 has no chat, stream, voice, or search.
-- **Anything that writes to the knowledge base or the audience is V4.**
-- When a task spans both (e.g. "find users who churned, then email them"),
-  use V3 for the analysis and V4 for the action — and say so explicitly, so the
-  user knows two surfaces are involved.
-- Don't migrate working V3 code to V4 for its own sake. There is no V4
-  equivalent for most of it.
+- **Chat now exists on both.** Route on *capability*, not version: V4 if you want
+  the synchronous send or idempotent create; V3 if voice or KB search is in the
+  same flow. Check the key holds `conversations:write` before choosing V4.
+- **Voice, KB search, and the agent are V3-only.** No V4 equivalent.
+- **Writes to the knowledge base or the audience are V4-only.**
+- When a task spans both (e.g. "find users who churned, then email them"), use V3
+  for the analysis and V4 for the action — say so explicitly, so the user knows
+  two surfaces are involved.
+- Don't migrate working V3 code to V4 for its own sake.
+
+### ⚠️ V4 conversation creation is eventually consistent
+
+`POST /v4/conversations` returns a `conversationId` **before the underlying
+thread exists**. Sending a message immediately fails with
+`404 resource_not_found` / `"Thread not found"`. Measured ready after **~2–6s**.
+
+**Retry the send on `404` with ~1s backoff** (up to ~5 attempts). A 404 right
+after create means "not ready yet", not "wrong id" — don't send the user
+chasing a bad conversation id. `scripts/test_delphi_v4.py` implements this.
+
+### ⚠️ Known outage: the stateless `ask` endpoints
+
+`POST /v3/conversation/ask` and `POST /v4/ask` **both return `502`
+(`dependency_failure` / `experience_stream_incomplete`) for every caller.**
+Verified deterministic — 0 successes in 24+ attempts across clones, key styles,
+and fully-scoped keys. Reported to Delphi 2026-08-02.
+
+**Do not debug this on the user's behalf** — it is not their key, scope, or
+payload. A scope problem returns `403` naming the scope; this is `502`.
+Recommend the two-call workaround (`POST /v4/conversations` then
+`POST /v4/conversations/{id}/messages`) and re-test before relying on `ask`.
 
 ## Clone discovery
 
@@ -414,6 +458,41 @@ All V4 responses wrap in `{"data": ...}` unless noted. Errors are
 ```bash
 curl -sS "https://api.delphi.ai/v4/profile" \
   -H "x-api-key: $DELPHI_API_KEY"
+```
+
+### Chat without SSE — create, then send and wait
+
+```bash
+curl -sS -X POST "https://api.delphi.ai/v4/conversations" \
+  -H "x-api-key: $DELPHI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+# -> {"data":{"conversationId":"...","existed":false}}
+```
+
+```bash
+curl -sS -X POST "https://api.delphi.ai/v4/conversations/<conversationId>/messages" \
+  -H "x-api-key: $DELPHI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"<message>"}'
+# -> {"data":{"text":"<full reply>","citations":[],"parts":[...]}}
+```
+
+### Chat with SSE (same frame contract as /v3/stream)
+
+```bash
+curl -i -N -X POST "https://api.delphi.ai/v4/conversations/<conversationId>/messages/stream" \
+  -H "x-api-key: $DELPHI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"<message>"}'
+```
+
+### Check whether a key holds `conversations:write`
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' -X POST "https://api.delphi.ai/v4/conversations" \
+  -H "x-api-key: $DELPHI_API_KEY" -H "Content-Type: application/json" -d '{}'
+# 200 = has the scope | 403 = missing it (response names the scope)
 ```
 
 ### List contacts (cursor-paginated, limit max 200)

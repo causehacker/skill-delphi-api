@@ -1,9 +1,11 @@
 # Delphi V4 Endpoints - Tested Coverage and Notes
 
-V4 is the **Delphi Developer Platform API** (`openapi: 3.1.0`, `info.version: 4.0.0`)
-— a *separate product surface* from V3, not a replacement for it. Captured from
-the live spec at `GET /v4/openapi.json` and grounded in real read-only tests
-(2026-08-01).
+V4 is the **Delphi Developer Platform API** (`openapi: 3.1.0`, `info.version: 4.0.0`).
+Captured from the live spec at `GET /v4/openapi.json` and grounded in real tests.
+
+**Last cross-checked 2026-08-02: 47 paths / 65 operations** (up from 40 / 58 the
+previous day — Delphi added a conversational surface plus attachments; see
+"Conversations" below).
 
 Base URL: `https://api.delphi.ai/v4`
 Authentication: `x-api-key` header, same as V3. **Existing V3 keys work against
@@ -11,24 +13,50 @@ V4** (verified — a `dsk-` key returned 200 on every read endpoint below).
 Fetching the spec itself also requires a valid key: `GET /v4/openapi.json`
 returns `401` unauthenticated (V3's returns `403`).
 
-## READ THIS FIRST: V4 does not replace V3
+## READ THIS FIRST: how V4 relates to V3
 
-V4 has **zero overlap** with V3's conversational surface. There is no `/stream`,
-`/conversation`, `/voice`, `/questions`, `/search`, `/agent`, or `/clone` in V4.
-Confirmed by scanning every path in the live spec.
+**This changed on 2026-08-02.** V4 gained a full conversational surface —
+`POST /v4/conversations`, `/messages`, `/messages/stream`, `/ask`, and
+conversation insights. An earlier version of this document said V4 had "zero
+overlap" with V3 and told readers not to plan a migration. **That is no longer
+true.** If you are following older notes, re-read this section.
 
-**Do not plan a V3 → V4 migration.** They are complementary:
+What V4 still does **not** have: `/voice/*`, `/search/*`, `/agent/run`, and
+`/clone` (its nearest equivalent is `GET /v4/profile`). Everything else in V3's
+chat path now has a V4 counterpart.
 
-| Need | Use |
-|------|-----|
-| Chat / SSE streaming, voice, KB search, agent | **V3** — V4 has none of it |
-| Contacts/CRM, custom properties, cohort filtering | **V4** — richer than V3 `/users` |
-| Knowledge-base **writes** (create/update/delete content) | **V4** — V3 can only *search* content |
-| Outbound SMS/email to a contact | **V4** `/send` — no V3 equivalent |
-| Owner-voice text generation (no retrieval) | **V4** `/generate` |
-| Raw OpenAI-compatible completions | **V4** `/llm/chat/completions` |
-| Webhooks / event subscriptions | **V4** — no V3 equivalent |
-| Deployed custom code (integrations platform) | **V4** — no V3 equivalent |
+| Need | Use | Notes |
+|------|-----|-------|
+| Chat — create a conversation and send messages | **either** | V4 additionally offers a **synchronous** send (no SSE parsing). See the comparison below. |
+| SSE token streaming | **either** | V4's `/messages/stream` reuses V3's exact `CloneResponse` frame contract — existing parsers port unchanged |
+| One-shot Q&A with no conversation state | **either** | V3 `/conversation/ask`, V4 `/ask` — ⚠️ **both currently return 502**, see below |
+| Voice audio / TTS | **V3 only** | no V4 equivalent |
+| Knowledge-base search & the KB agent | **V3 only** | `/v3/search/*`, `/v3/agent/run` |
+| Audience sizing & retention analytics | **V3** | `/v3/users` + `/v3/conversation/list` |
+| Contacts/CRM, custom properties, cohort filtering | **V4** | far richer than V3 `/users` |
+| Knowledge-base **writes** (create/update/delete) | **V4** | V3 can only *search* content |
+| Outbound SMS/email to a contact | **V4** `/send` | no V3 equivalent |
+| Owner-voice generation (no retrieval) | **V4** `/generate` | |
+| Raw OpenAI-compatible completions | **V4** `/llm/chat/completions` | |
+| Webhooks, integrations platform | **V4** | no V3 equivalent |
+
+### Choosing a chat surface now that both have one
+
+| | V3 | V4 |
+|---|---|---|
+| Create | `POST /v3/conversation` | `POST /v4/conversations` |
+| Send (streaming) | `POST /v3/stream` | `POST /v4/conversations/{id}/messages/stream` |
+| Send (synchronous) | — | `POST /v4/conversations/{id}/messages` ✅ |
+| Idempotent create | — | `externalId` (409 on reuse with different input) ✅ |
+| Attachments | ✅ (new) | ✅ (new) |
+| Scope required | none (legacy keys unscoped) | **`conversations:write`** — see Scopes |
+
+**Prefer V4 for new chat integrations** when you want the synchronous send or
+idempotent conversation creation, *and* your key carries `conversations:write`.
+**Stay on V3** if you need voice or knowledge-base search in the same flow, or if
+your key lacks the scope — which is the common case today (see Scopes).
+
+There is still no reason to migrate working V3 chat code purely for its own sake.
 
 ## Conventions that differ from V3
 
@@ -58,23 +86,59 @@ These bite if you assume V3 habits carry over.
 5. **Vocabulary.** `clone` → **mind**, `users` → **contacts**, `tags` →
    **contact-tags**, conversations → **threads** / **thread-sessions**.
 
-## Scopes
+## Scopes — read this before choosing which key to use
 
-V4 documents a **scoped-key model** — a departure from V3, where a key is simply
-valid or not. Scopes named in the live spec:
+V4 uses a **scoped-key model**; V3 keys are simply valid or not. This has a
+counter-intuitive consequence verified on 2026-08-02:
 
-`contacts:list` · `contacts:list:pii` · `contacts:read` · `content:read` ·
-`content:write` · `transcripts:read` · `llm` · `integrations:read` ·
-`integrations:source:read`
+> **Legacy `dsk-` keys work on more of V4 than the newer `dlph_` App-Launch keys
+> do.** Legacy keys appear unscoped/full-access and returned `200` on every V4
+> endpoint tested (25/25 across five clones). Most App-Launch keys are missing
+> `conversations:write` and `insights:read`, so they get `403` on the entire
+> conversational surface.
 
-`contacts:list:pii` is the one to know: **without it, `GET /contacts` returns
-PII-free rows** (no `email`, no `phone`). With it, those fields appear. Tested
-keys carried it — a key that suddenly returns rows without emails has not lost
-data, it has lost a scope.
+**Do not assume "newer key = more access."** The App-Launch advantage is the
+10k req/min rate limit, not breadth. On the newest V4 endpoints it is *narrower*.
+
+The full scope vocabulary observed on a fully-provisioned key (21 scopes):
+
+```
+profile:read        content:read          content:write       contacts:read
+contacts:write      contacts:delete       contacts:list       contacts:list:pii
+transcripts:read    webhooks:read         webhooks:write      integrations:read
+integrations:source:read                  integrations:write  subscriptions:write
+send                notify-owner          generate:text       llm
+insights:read       conversations:write
+```
+
+Two to know:
+
+- **`conversations:write`** gates `POST /v4/conversations`,
+  `/messages`, and `/messages/stream`. Without it: `403`.
+  Measured across the App-Launch keys on hand, only **2 of 16** had it.
+- **`contacts:list:pii`** — without it, `GET /contacts` returns rows with **no
+  `email` or `phone`**. That looks like missing data but is a scope difference.
+
+A missing scope produces an unambiguous error that names it:
+
+```json
+{"type":"forbidden","code":"insufficient_permissions",
+ "message":"API key is missing required scope: conversations:write",
+ "details":{"scope":"conversations:write"}}
+```
+
+**Use this to tell scope problems apart from outages.** A `403
+insufficient_permissions` is a provisioning issue — ask Delphi to add the scope.
+A `502 dependency_failure` is a backend fault and no amount of scope will fix it.
+
+**Migration trap:** switching a clone from its legacy `dsk-` key to a `dlph_`
+App-Launch key can silently *remove* access to the V4 conversational endpoints.
+Verify with `POST /v4/conversations` before cutting over.
 
 Note: the spec declares only `ApiKeyAuth` under `securitySchemes` and no
 per-operation `security` blocks, so scopes appear **only in prose descriptions**.
-You cannot enumerate a key's scopes from the spec — discover them by calling.
+You cannot enumerate a key's scopes from the spec — discover them by calling
+(the `scripts/test_delphi_v4.py` harness reports the ones it can infer).
 
 ---
 
@@ -127,6 +191,104 @@ The V4 evolution of V3's `/users`, with a materially richer object.
   `channelType`
   - Closest V4 analogue to V3's `GET /v3/conversation/list?email=` — but keyed
     by contact ID, and it returns a summary + preview rather than a bare list.
+
+## Conversations — added 2026-08-02
+
+The newest V4 surface. All of these require **`conversations:write`** (insights
+require `insights:read`) — see Scopes; most App-Launch keys lack both.
+
+- `POST /v4/conversations` — create a conversation.
+  - Body (all optional): `channelId` (defaults to the owner's API channel),
+    `contactId` (omit for an anonymous conversation), `externalId`
+    (caller-supplied idempotency key, 1–512), `overrides` (conversation-level
+    experience overrides, applied after channel-level in the merge chain)
+  - Response: `{"data": {"conversationId": "...", "existed": false}}`
+  - **`externalId` makes creation idempotent** — a second call with the same
+    value returns the existing conversation (`existed: true`). Reusing it with a
+    *different* contact, channel, or settings returns `409`. V3 has no equivalent;
+    this is the clean way to avoid duplicate conversations on retry.
+  - ⚠️ **Creation is eventually consistent — you cannot send a message
+    immediately.** The call returns a `conversationId` before the underlying
+    thread exists. Posting to `/messages` right away fails with:
+
+    ```json
+    {"type":"not_found","code":"resource_not_found","message":"Thread not found"}
+    ```
+
+    Measured 2026-08-02: ready after **~2–6 seconds** (`insights` is readable
+    instantly, so only the *thread* lags). **Retry on `404` with ~1s backoff**
+    rather than sleeping a fixed amount — treat a 404 immediately after create
+    as "not ready yet", not "wrong id". This bites the obvious
+    create-then-send integration on the very first call.
+- `POST /v4/conversations/{conversationId}/messages` — **send and wait**.
+  - Body: `text` (required, 1–50,000), `attachmentIds[]`
+  - Response: `{"data": {"userMessageId", "assistantMessageId", "text",
+    "citations": [], "parts": [{"type":"text","text":"..."}]}}`
+  - **Synchronous — no SSE parsing.** This is the single biggest ergonomic win
+    over V3, where every reply requires consuming a stream. Verified live:
+    returns the complete assistant reply in one JSON round-trip.
+- `POST /v4/conversations/{conversationId}/messages/stream` — SSE stream.
+  - Same body as above; response is `text/event-stream`.
+  - The spec states it "uses the v3 CloneResponse SSE frame contract" — verified:
+    frames carry `current_token`, and the stream terminates with `[DONE]`, exactly
+    like `/v3/stream`. **Existing V3 SSE parsers work unchanged.**
+  - Observed ~59–65 frames and ~5s for a short answer.
+- `GET /v4/conversations/{conversationId}/insights` — cursor-paginated insight
+  cards (`limit` 1–200, default 50). Requires `insights:read`.
+  - **Returns existing cards only; it does not trigger synthesis.** Insights are
+    generated asynchronously, so a freshly created conversation returns
+    `{"data": [], "nextCursor": null}` — that is normal, not an error.
+- `POST /v4/ask` — stateless Q&A. **⚠️ Currently returns `502` for all callers —
+  see the note below.**
+  - Body: `question` (required, 1–50,000), `contactId` (informs the answer with
+    that contact's identity and access tier), `idempotencyKey` (1–512)
+  - Answers from the knowledge base **without creating** a conversation, session,
+    message, attachment, preview, or insight.
+  - `409` if an idempotency key is reused with different input.
+
+### ⚠️ `/v4/ask` and `/v3/conversation/ask` are currently broken
+
+Both stateless "ask" endpoints return `502` on every request:
+
+```json
+{"type":"bad_gateway","code":"dependency_failure",
+ "message":"The response service failed. Please try again.",
+ "details":{"failureKind":"experience_stream_incomplete","attemptCount":1,"status":200}}
+```
+
+Verified deterministic — 0 successes in 24+ attempts across 5 clones, both key
+styles, both API versions, and keys with the complete scope set. **Not a scope
+issue** (that would be `403`, not `502`), and not transient (unlike the known
+intermittent `500` on `/v3/stream`, retries never clear it). It fails in ~0.4s
+while a real generation takes ~5s, so it is failing at stream open rather than
+timing out.
+
+**Workaround** — two calls instead of one:
+
+```
+POST /v4/conversations                 -> conversationId
+POST /v4/conversations/{id}/messages   -> answer
+```
+
+This leaves behind conversation state that `ask` exists to avoid, and doubles
+request count. Reported to Delphi 2026-08-02; re-test before relying on `ask`.
+
+## Attachments (V4) — added 2026-08-02
+
+Two-step upload, mirroring the V3 flow with camelCase fields.
+
+1. `POST /v4/conversations/{conversationId}/attachments/presign`
+   - Body: `fileName` (1–255), `contentType` (≤255), `fileSize` (**≤10,485,760
+     bytes / 10 MB**)
+   - Response carries a presigned **S3 PUT URL** — upload the bytes directly to it
+2. `POST /v4/conversations/{conversationId}/attachments/{attachmentId}/complete`
+   - Verifies and indexes the uploaded file
+
+Then pass the attachment id in `attachmentIds[]` on a `/messages` call. The V3
+equivalent returns `status: indexed | skipped`, with `reason` one of
+`no_extractable_content`, `indexing_unavailable`, `unsupported_media_type` —
+**a `skipped` result is a success response, so check `status`, not just the HTTP
+code.**
 
 ## Contact tags
 
@@ -367,12 +529,22 @@ knowledge, or deploy code.
   live code
 - `PUT /v4/integrations/{id}/secrets/{name}` — writes a credential
 
-**Metered — safe but not free:** `POST /v4/generate` (daily owner budget) and
-`POST /v4/llm/chat/completions` (token spend). Use sparingly; prefer an
-idempotency key so retries don't double-charge.
+**Metered — safe but not free:** `POST /v4/generate` (daily owner budget),
+`POST /v4/llm/chat/completions` (token spend), and the conversation endpoints
+(`/messages`, `/messages/stream`) which invoke the model per call. Use sparingly;
+prefer an idempotency key so retries don't double-charge.
+
+**Note on `/generate` budgets:** the daily cap is **per owner and varies by
+account** — observed 9,999/day on one account and 494/day on another. Read
+`budgetRemaining` from the response rather than assuming a fixed ceiling.
 
 **Safe read-only baseline** (all verified `200` on a production key):
 `GET /profile`, `/profile/questions`, `/profiles/{username}`, `/contacts`,
 `/contacts/{id}`, `/contacts/{id}/threads`, `/contact-tags`,
 `/contact-properties/definitions`, `/content`, `/content/{id}`,
-`/integrations`, `/webhook-subscriptions`.
+`/integrations`, `/webhook-subscriptions`,
+`/conversations/{id}/insights` (needs `insights:read`).
+
+Creating a conversation (`POST /v4/conversations`) is technically a write but is
+cheap and side-effect-light — it allocates an id and nothing else. It is the
+right first call when checking whether a key holds `conversations:write`.

@@ -232,6 +232,8 @@
   .danger-banner.destructive .dot { background: var(--delete); }
   .danger-banner.metered { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
   .danger-banner.metered .dot { background: #f59e0b; }
+  .danger-banner.broken { background: #f5f3ff; color: #5b21b6; border: 1px solid #ddd6fe; }
+  .danger-banner.broken .dot { background: var(--patch); }
   .mode-banner .dot { width: 8px; height: 8px; border-radius: 50%; }
   .mode-banner.proxy .dot { background: var(--get); }
   .mode-banner.static .dot { background: #f59e0b; }
@@ -654,6 +656,58 @@ const ENDPOINTS_V3 = [
       extra: [{ id: "del_cid", placeholder: "conversation_id", label: "Conversation ID" }],
       pathFn: (g, ex) => `/v3/conversation/${ex.del_cid || "<conversation_id>"}`
     },
+    { method: "POST", path: "/v3/conversation/ask", summary: "Ask a one-off question", desc: "<strong>&#9888; Currently returns 502 for all callers</strong> &mdash; a Delphi-side fault reported 2026-08-02, not a problem with your key or payload. Use <code>/v3/conversation</code> + <code>/v3/stream</code> instead. When fixed: generates a reply with no conversation created. Visitor memory loads from <code>user_email</code> when provided. Response is a flat <code>{answer, citations}</code>, not wrapped.",
+      danger: "broken",
+      body: [
+        { name: "question", type: "string", req: true, desc: "The question (1-50,000 chars)" },
+        { name: "user_email", type: "string", req: false, desc: "Loads this visitor's memory" },
+        { name: "idempotency_key", type: "string", req: false, desc: "Dedupe handle (1-512)" },
+      ],
+      extra: [
+        { id: "ask3_q", placeholder: "What is your background?", label: "Question" },
+        { id: "ask3_email", placeholder: "user_email", label: "User Email", req: false, global: "userEmail" },
+        { id: "ask3_idem", placeholder: "idempotency_key", label: "Idempotency Key", req: false },
+      ],
+      bodyFn: (g, ex) => {
+        const b = { question: ex.ask3_q || "What is your background?" };
+        if (ex.ask3_email) b.user_email = ex.ask3_email;
+        if (ex.ask3_idem) b.idempotency_key = ex.ask3_idem;
+        return b;
+      }
+    },
+    { method: "GET", path: "/v3/conversation/{conversation_id}/insights", summary: "Get conversation insights", desc: "Insight cards linked to a conversation, newest first. Returns <em>existing</em> cards only &mdash; it does not trigger synthesis. Insights generate asynchronously, so an empty array on a fresh conversation is normal, not an error.",
+      pathParams: [{ name: "conversation_id", desc: "Conversation UUID" }],
+      extra: [{ id: "ins3_cid", placeholder: "conversation_id", label: "Conversation ID" }],
+      pathFn: (g, ex) => `/v3/conversation/${ex.ins3_cid || "<conversation_id>"}/insights`
+    },
+    { method: "POST", path: "/v3/conversation/{conversation_id}/attachments/presign", summary: "Presign attachment upload", desc: "Step 1 of 2. Returns <code>{attachment_id, upload_url}</code> where <code>upload_url</code> is a presigned <strong>S3 PUT</strong> &mdash; upload the file bytes directly to it, then call <em>complete</em>. Max file size 10,485,760 bytes (10 MB).",
+      pathParams: [{ name: "conversation_id", desc: "Conversation UUID" }],
+      body: [
+        { name: "file_name", type: "string", req: true, desc: "File name (1-255)" },
+        { name: "content_type", type: "string", req: true, desc: "MIME type (1-255)" },
+        { name: "file_size", type: "integer", req: true, desc: "Bytes (max 10,485,760)" },
+      ],
+      extra: [
+        { id: "att3_cid", placeholder: "conversation_id", label: "Conversation ID" },
+        { id: "att3_name", placeholder: "notes.pdf", label: "File Name" },
+        { id: "att3_type", placeholder: "application/pdf", label: "Content Type" },
+        { id: "att3_size", placeholder: "102400", label: "File Size (bytes)", type: "integer" },
+      ],
+      pathFn: (g, ex) => `/v3/conversation/${ex.att3_cid || "<conversation_id>"}/attachments/presign`,
+      bodyFn: (g, ex) => ({
+        file_name: ex.att3_name || "notes.pdf",
+        content_type: ex.att3_type || "application/pdf",
+        file_size: parseInt(ex.att3_size, 10) || 102400,
+      })
+    },
+    { method: "POST", path: "/v3/conversation/{conversation_id}/attachments/{attachment_id}/complete", summary: "Complete attachment", desc: "Step 2 of 2 &mdash; verify and index the uploaded file. <strong>Returns 200 even when the file was skipped</strong>, so check <code>status</code> (<code>indexed</code> | <code>skipped</code>), not just the HTTP code. On <code>skipped</code>, <code>reason</code> is <code>no_extractable_content</code>, <code>indexing_unavailable</code>, or <code>unsupported_media_type</code>.",
+      pathParams: [{ name: "conversation_id", desc: "Conversation UUID" }, { name: "attachment_id", desc: "From presign" }],
+      extra: [
+        { id: "attc3_cid", placeholder: "conversation_id", label: "Conversation ID" },
+        { id: "attc3_aid", placeholder: "attachment_id", label: "Attachment ID" },
+      ],
+      pathFn: (g, ex) => `/v3/conversation/${ex.attc3_cid || "<conversation_id>"}/attachments/${ex.attc3_aid || "<attachment_id>"}/complete`
+    },
   ]},
   { section: "Questions", endpoints: [
     { method: "GET", path: "/v3/questions", summary: "Get suggested questions", desc: "Retrieve suggested questions created for this clone.",
@@ -940,6 +994,119 @@ const ENDPOINTS_V4 = [
       pathParams: [{ name: "username", desc: "Public username handle (e.g. jc3)" }],
       extra: [{ id: "v4_username", placeholder: "username", label: "Username" }],
       pathFn: (g, ex) => `/v4/profiles/${encodeURIComponent(ex.v4_username || "<username>")}`
+    },
+  ]},
+
+  { section: "Conversations", endpoints: [
+    { method: "POST", path: "/v4/conversations", summary: "Create conversation", desc: "Added 2026-08-02. Requires the <code>conversations:write</code> scope &mdash; most <code>dlph_</code> App-Launch keys lack it and will 403 here, while legacy <code>dsk-</code> keys work. This is also the cheapest way to <strong>test whether a key holds that scope</strong>. Supply <code>externalId</code> to make creation idempotent: a repeat returns the existing conversation with <code>existed: true</code>; reusing it with a different contact/channel/settings returns 409.",
+      body: [
+        { name: "channelId", type: "string", req: false, desc: "Defaults to the owner's API channel" },
+        { name: "contactId", type: "string", req: false, desc: "Omit for an anonymous conversation" },
+        { name: "externalId", type: "string", req: false, desc: "Idempotency key (1-512)" },
+      ],
+      extra: [
+        { id: "v4cv_contact", placeholder: "contactId", label: "Contact ID", req: false },
+        { id: "v4cv_ext", placeholder: "externalId", label: "External ID (idempotency)", req: false },
+        { id: "v4cv_chan", placeholder: "channelId", label: "Channel ID", req: false },
+      ],
+      bodyFn: (g, ex) => {
+        const b = {};
+        if (ex.v4cv_contact) b.contactId = ex.v4cv_contact;
+        if (ex.v4cv_ext) b.externalId = ex.v4cv_ext;
+        if (ex.v4cv_chan) b.channelId = ex.v4cv_chan;
+        return b;
+      }
+    },
+    { method: "POST", path: "/v4/conversations/{conversationId}/messages", summary: "Send message (synchronous)", desc: "<strong>Send and wait &mdash; no SSE parsing.</strong> The main ergonomic win over V3, which requires consuming a stream for every reply. Returns the complete assistant reply in one JSON round-trip: <code>{userMessageId, assistantMessageId, text, citations, parts}</code>. Requires <code>conversations:write</code>.<br><br><strong>&#9888; If you just created the conversation, wait a few seconds.</strong> Creation is eventually consistent &mdash; sending immediately returns <code>404 \"Thread not found\"</code>. Measured ready after ~2&ndash;6s. In code, retry on 404 with ~1s backoff; a 404 here means \"not ready yet\", not a bad ID.",
+      danger: "metered",
+      pathParams: [{ name: "conversationId", desc: "From POST /v4/conversations" }],
+      body: [
+        { name: "text", type: "string", req: true, desc: "Message text (1-50,000)" },
+        { name: "attachmentIds", type: "string[]", req: false, desc: "From the attachment flow (comma-separated)" },
+      ],
+      extra: [
+        { id: "v4msg_cid", placeholder: "conversationId", label: "Conversation ID" },
+        { id: "v4msg_text", placeholder: "Hello!", label: "Message" },
+        { id: "v4msg_att", placeholder: "attachmentIds", label: "Attachment IDs (comma-sep)", req: false },
+      ],
+      pathFn: (g, ex) => `/v4/conversations/${ex.v4msg_cid || "<conversationId>"}/messages`,
+      bodyFn: (g, ex) => {
+        const b = { text: ex.v4msg_text || "Hello!" };
+        if (ex.v4msg_att) b.attachmentIds = ex.v4msg_att.split(",").map(s => s.trim()).filter(Boolean);
+        return b;
+      }
+    },
+    { method: "POST", path: "/v4/conversations/{conversationId}/messages/stream", summary: "Send message (SSE stream)", desc: "Streams the reply using <strong>V3's exact <code>CloneResponse</code> frame contract</strong> &mdash; frames carry <code>current_token</code> and the stream ends with <code>[DONE]</code>, so existing <code>/v3/stream</code> parsers work unchanged. Requires <code>conversations:write</code>.",
+      danger: "metered",
+      stream: true,
+      pathParams: [{ name: "conversationId", desc: "From POST /v4/conversations" }],
+      body: [
+        { name: "text", type: "string", req: true, desc: "Message text (1-50,000)" },
+        { name: "attachmentIds", type: "string[]", req: false, desc: "From the attachment flow" },
+      ],
+      extra: [
+        { id: "v4stm_cid", placeholder: "conversationId", label: "Conversation ID" },
+        { id: "v4stm_text", placeholder: "Hello!", label: "Message" },
+      ],
+      pathFn: (g, ex) => `/v4/conversations/${ex.v4stm_cid || "<conversationId>"}/messages/stream`,
+      bodyFn: (g, ex) => ({ text: ex.v4stm_text || "Hello!" })
+    },
+    { method: "POST", path: "/v4/ask", summary: "Ask (stateless)", desc: "<strong>&#9888; Currently returns 502 for all callers</strong> &mdash; a Delphi-side fault reported 2026-08-02. It is <em>not</em> your key, scope, or payload: a scope failure returns 403 naming the scope, this returns 502 <code>dependency_failure</code>. Use the two-call workaround (create a conversation, then send a message). When fixed: answers from the knowledge base without creating a conversation, session, message, or insight.",
+      danger: "broken",
+      body: [
+        { name: "question", type: "string", req: true, desc: "The question (1-50,000)" },
+        { name: "contactId", type: "string", req: false, desc: "Informs the answer with that contact's identity/tier" },
+        { name: "idempotencyKey", type: "string", req: false, desc: "Dedupe handle (1-512)" },
+      ],
+      extra: [
+        { id: "v4ask_q", placeholder: "What is greatness?", label: "Question" },
+        { id: "v4ask_cid", placeholder: "contactId", label: "Contact ID", req: false },
+        { id: "v4ask_idem", placeholder: "idempotencyKey", label: "Idempotency Key", req: false },
+      ],
+      bodyFn: (g, ex) => {
+        const b = { question: ex.v4ask_q || "What is greatness?" };
+        if (ex.v4ask_cid) b.contactId = ex.v4ask_cid;
+        if (ex.v4ask_idem) b.idempotencyKey = ex.v4ask_idem;
+        return b;
+      }
+    },
+    { method: "GET", path: "/v4/conversations/{conversationId}/insights", summary: "List conversation insights", desc: "Cursor-paginated insight cards. Requires <code>insights:read</code>. Returns <em>existing</em> cards only &mdash; it does not trigger synthesis. Insights generate asynchronously, so an empty array on a fresh conversation is expected.",
+      pathParams: [{ name: "conversationId", desc: "Conversation UUID" }],
+      query: [{ name: "limit", type: "integer", req: false, desc: "1-200 (default 50)" }],
+      extra: [
+        { id: "v4ins_cid", placeholder: "conversationId", label: "Conversation ID" },
+        { id: "v4ins_lim", placeholder: "50", label: "Limit", type: "integer", req: false },
+      ],
+      pathFn: (g, ex) => `/v4/conversations/${ex.v4ins_cid || "<conversationId>"}/insights`,
+      queryFn: (g, ex) => `?limit=${ex.v4ins_lim || "50"}`
+    },
+    { method: "POST", path: "/v4/conversations/{conversationId}/attachments/presign", summary: "Presign attachment upload", desc: "Step 1 of 2. Returns a presigned <strong>S3 PUT</strong> URL &mdash; upload the file bytes directly to it, then call <em>complete</em>, then pass the id in <code>attachmentIds</code> on a message. Max 10,485,760 bytes (10 MB).",
+      pathParams: [{ name: "conversationId", desc: "Conversation UUID" }],
+      body: [
+        { name: "fileName", type: "string", req: true, desc: "File name (1-255)" },
+        { name: "contentType", type: "string", req: true, desc: "MIME type (max 255)" },
+        { name: "fileSize", type: "integer", req: true, desc: "Bytes (max 10,485,760)" },
+      ],
+      extra: [
+        { id: "v4att_cid", placeholder: "conversationId", label: "Conversation ID" },
+        { id: "v4att_name", placeholder: "notes.pdf", label: "File Name" },
+        { id: "v4att_type", placeholder: "application/pdf", label: "Content Type" },
+        { id: "v4att_size", placeholder: "102400", label: "File Size (bytes)", type: "integer" },
+      ],
+      pathFn: (g, ex) => `/v4/conversations/${ex.v4att_cid || "<conversationId>"}/attachments/presign`,
+      bodyFn: (g, ex) => ({
+        fileName: ex.v4att_name || "notes.pdf",
+        contentType: ex.v4att_type || "application/pdf",
+        fileSize: parseInt(ex.v4att_size, 10) || 102400,
+      })
+    },
+    { method: "POST", path: "/v4/conversations/{conversationId}/attachments/{attachmentId}/complete", summary: "Complete attachment", desc: "Step 2 of 2 &mdash; verify and index the uploaded file. As on V3, a skipped file still returns 200, so check the returned status rather than the HTTP code.",
+      pathParams: [{ name: "conversationId", desc: "Conversation UUID" }, { name: "attachmentId", desc: "From presign" }],
+      extra: [
+        { id: "v4attc_cid", placeholder: "conversationId", label: "Conversation ID" },
+        { id: "v4attc_aid", placeholder: "attachmentId", label: "Attachment ID" },
+      ],
+      pathFn: (g, ex) => `/v4/conversations/${ex.v4attc_cid || "<conversationId>"}/attachments/${ex.v4attc_aid || "<attachmentId>"}/complete`
     },
   ]},
 
@@ -1585,6 +1752,7 @@ function renderEndpoint(ep, idx) {
       <div class="endpoint-body">
         ${ep.danger === "destructive" ? `<div class="danger-banner destructive"><span class="dot"></span><strong>Changes real state.</strong> This writes, deletes, or sends something a real person can see. Confirm before you press Send.</div>` : ``}
         ${ep.danger === "metered" ? `<div class="danger-banner metered"><span class="dot"></span><strong>Metered.</strong> Safe to call, but it consumes budget, tokens, or sends a notification. Don't loop it.</div>` : ``}
+        ${ep.danger === "broken" ? `<div class="danger-banner broken"><span class="dot"></span><strong>Known outage &mdash; returns 502.</strong> Delphi-side fault reported 2026-08-02, not your key or payload. Expect this to fail until fixed; re-test before relying on it.</div>` : ``}
         <div class="endpoint-section" style="color:var(--text-secondary);font-size:13px">${ep.desc}</div>
         ${renderParamsTable(ep.pathParams, "Path Parameters")}
         ${renderParamsTable(ep.query, "Query Parameters")}

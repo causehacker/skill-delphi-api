@@ -16,11 +16,26 @@ make docs
 
 Enter your API key and optionally a user email in the top bar. Open any endpoint card and click **Send** to fire a live request. The `/v3/stream` endpoint streams tokens in real-time with a blinking cursor. See `README.md` for full details.
 
-Use the **V3 / V4 toggle** in the top bar to switch surfaces. V3 has the
-conversational endpoints (chat, stream, voice, search); V4 has the Developer
-Platform (contacts, knowledge-base writes, outbound messaging, webhooks,
-integrations). V4 endpoints that change real state carry a red warning banner —
-read it before pressing Send.
+Use the **V3 / V4 toggle** in the top bar to switch surfaces. **Both now have
+chat** — V4 gained conversations and streaming on 2026-08-02, plus a
+*synchronous* send that needs no SSE parsing. V3 keeps voice, knowledge-base
+search, and the KB agent; V4 keeps contacts, content writes, outbound messaging,
+webhooks, and integrations.
+
+Banners on the endpoint cards tell you what's safe to press:
+
+- **red** — changes real state (sends a message, deletes content, deploys code)
+- **amber** — metered (consumes budget, tokens, or invokes the model)
+- **purple** — known outage; expect a 502 until Delphi ships a fix
+
+Two things that will otherwise look like your bug:
+
+- `POST /v4/conversations` is **eventually consistent** — sending a message
+  straight after creating one returns `404 "Thread not found"`. Wait a few
+  seconds (ready in ~2–6s) and retry.
+- Most `dlph_` App-Launch keys lack the `conversations:write` scope and will
+  `403` on the V4 chat endpoints. Legacy `dsk-` keys work. The 403 body names
+  the missing scope.
 
 ## CLI usage
 
@@ -143,6 +158,8 @@ python3 delphi-api-safe/scripts/test_delphi_v4.py --account <name>
 ```
 
 - `GET /v4/profile`, `/v4/profile/questions`, `/v4/profiles/{username}`
+- opt-in conversations (`--test-conversations`): `POST /v4/conversations`, `POST /v4/conversations/{id}/messages` (synchronous send), `GET /v4/conversations/{id}/insights` — needs `conversations:write` / `insights:read`, reported as SKIP when the key lacks them
+- opt-in `--test-ask`: `POST /v4/ask` — **known outage, returns 502 platform-wide** (reported 2026-08-02); the harness labels it rather than counting it as a failure
 - `GET /v4/contacts`, `/v4/contacts/{id}`, `/v4/contacts/{id}/threads`
 - `GET /v4/contact-tags`, `/v4/contact-properties/definitions`
 - `GET /v4/content`, `/v4/content/{id}`
