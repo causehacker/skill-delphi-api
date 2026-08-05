@@ -1,6 +1,6 @@
 ---
 name: delphi-api-safe
-description: Safely operate and troubleshoot the Delphi V3 API (conversations, streaming, voice, clone, knowledge-base search) and the Delphi V4 Developer Platform API (contacts/CRM, knowledge-base writes, outbound SMS/email, webhooks, integrations, OpenAI-compatible LLM) for technical and non-technical users. Use when a user asks to test Delphi API keys, run pass/fail checks across accounts, generate curl commands, debug HTTP 4xx/5xx errors, or prepare incident reports. Also use for audience and engagement analytics — sizing an audience ("how many users", "how many real emails", filtering out test/fake accounts) and measuring conversation retention ("retention", "return rate", "how many users came back", "how many have had conversations", repeat-visit and churn analysis from conversation data), including a correctly time-boxed, censoring-corrected "D30 retention" / "30-day retention" / "true 30 day retention" / "cohort retention" number distinct from all-time return-rate metrics. Also trigger when the user says things like "is my clone working", "test this key", "run a smoke test", "check my Delphi", "new Delphi for [name]", "evaluate retention", "v4", "contacts", "upsert a contact", "add to the knowledge base", "set up a webhook", or shares a dsk- or dlph_ API key and wants to verify it. If the user pastes a Delphi API key or mentions Delphi clones, minds, or contacts in any testing, troubleshooting, or audience-analytics context, use this skill.
+description: Safely operate and troubleshoot the Delphi V3 API (conversations, streaming, voice, clone, knowledge-base search) and the Delphi V4 Developer Platform API (contacts/CRM, knowledge-base writes, outbound SMS/email, webhooks, integrations, OpenAI-compatible LLM) for technical and non-technical users. Use when a user asks to test Delphi API keys, run pass/fail checks across accounts, generate curl commands, debug HTTP 4xx/5xx errors, or prepare incident reports. Also use for audience and engagement analytics — sizing an audience ("how many users", "how many real emails", filtering out test/fake accounts) and measuring conversation retention ("retention", "return rate", "how many users came back", "how many have had conversations", repeat-visit and churn analysis from conversation data), including a correctly time-boxed, censoring-corrected "D30 retention" / "30-day retention" / "true 30 day retention" / "cohort retention" number distinct from all-time return-rate metrics. Also covers the browser web embed (embed.js / loader.js) — installing a clone on a web page, prefilling or auto-sending a first message, embed styling and landing pages, embed SSO, and debugging an embed that renders but misbehaves. Also trigger when the user says things like "is my clone working", "test this key", "run a smoke test", "check my Delphi", "new Delphi for [name]", "evaluate retention", "v4", "contacts", "upsert a contact", "add to the knowledge base", "set up a webhook", "embed", "embed.js", "data-channel", "put my clone on my site", "prefill the chat", "first message", or shares a dsk- or dlph_ API key and wants to verify it. If the user pastes a Delphi API key, a Delphi embed script tag, or mentions Delphi clones, minds, contacts, or embeds in any testing, troubleshooting, or audience-analytics context, use this skill.
 ---
 
 # Delphi API Safe
@@ -9,6 +9,11 @@ Run Delphi API tests in a non-destructive, user-safe way. Prefer reproducible ch
 
 Delphi exposes **two live API surfaces**. As of 2026-08-02 **both have chat** —
 V4 gained conversations, streaming, and stateless ask. See "Choosing V3 vs V4".
+
+There is also a **third surface that is not an API at all**: the browser web
+embed, authenticated by channel ID and origin rather than a key. If the user is
+putting a clone on a web page, jump to "Web embed" — none of the key-based
+guidance below applies there.
 
 | | V3 — "Delphi External API" | V4 — "Delphi Developer Platform API" |
 |---|---|---|
@@ -98,7 +103,7 @@ limit, not access breadth. Verify with `POST /v4/conversations` before assuming.
   - **Webhooks**: `GET|POST /v4/webhook-subscriptions`, `GET|PUT|DELETE /v4/webhook-subscriptions/{id}` — 9 event types
   - **Integrations** (21 ops): deploy bundled code triggered by events or cron — lifecycle, source, secrets, triggers, delivery log
   - **Data deletion**: `POST /v4/data-deletion-requests` — irreversible, queues contact data deletion
-- See `references/v3-endpoints.md` and `references/v4-endpoints.md` for request/response expectations and known quirks.
+- See `references/v3-endpoints.md` and `references/v4-endpoints.md` for request/response expectations and known quirks, and `references/embed.md` for the browser embed.
 - Never invent user data (emails, API keys, clone names, webhook URLs). Users often share test output with teammates or paste it into tickets — invented data causes confusion and erodes trust.
 - If a required field is missing, ask a direct question before proceeding.
 - Treat API keys as sensitive secrets. Redact keys in user-visible output (e.g., `dsk-****WmQ`) or use `$DELPHI_API_KEY`. Users frequently share screens or copy chat logs, so a leaked key can be exploited within minutes. Don't echo raw keys back, even if the user provided them — the output may end up somewhere the user didn't intend.
@@ -209,6 +214,53 @@ If `ask` ever regresses, the signature to recognize is a **fast `502`** with
 generation). That's a backend fault, not the user's key — a scope problem
 returns `403` naming the scope. Fall back to `POST /v4/conversations` then
 `POST /v4/conversations/{id}/messages`.
+
+## Web embed (browser, no API key)
+
+The embed is a separate surface: no key, authenticated by channel ID and origin.
+Full detail in `references/embed.md` — read it before answering embed questions,
+because the wrong generation gives confidently wrong advice.
+
+**Always establish which generation the user has first.** It determines every
+other answer:
+
+| Script tag | Generation | Iframe | Host page can drive the chat DOM? |
+|---|---|---|---|
+| `www.delphi.ai/embed.js` | **current** | cross-origin `www.delphi.ai/embed/{channelId}` | **No** |
+| `embed.delphi.ai/loader.js` | legacy | initially same-origin | Yes |
+
+The three facts that resolve most embed questions:
+
+1. **`contentDocument` is permanently null on the current embed.** Scripts that
+   type into the chat input cannot work, and no retry count fixes it. This is
+   the single most common cause of "my embed automation broke" — it usually
+   means the user migrated from `loader.js` to `embed.js`.
+2. **A first message is set via the iframe URL, not an attribute or an API.**
+   `embed.js` supports `data-channel`, `data-mode`, `data-width`, `data-height`,
+   `data-position`, `data-landing-page`, `data-reset-disclaimer` — and nothing
+   for a prompt. Add `q` (or `message`) to the iframe's `src`; the embed reads it
+   as an entry-intent initial prompt and also forces the CHAT view. Confirm
+   server-side acceptance without a browser:
+
+   ```bash
+   curl -s "https://www.delphi.ai/embed/CHANNEL_UUID?theme=light&q=test" \
+     | grep -o 'entryIntent[^}]*}'
+   # -> entryIntent\":{\"initialPrompt\":\"test\"}
+   ```
+
+   Rewriting `src` reloads the embed once more, since `embed.js` inserts the
+   iframe with `src` already set. Say so rather than letting the user discover it.
+3. **The `postMessage` bridge is SSO-only.** Only `sso_login` / `sso_logout`
+   (and their `platform_`-prefixed forms) are forwarded into the iframe;
+   everything else is dropped. `window.Delphi` exposes only `open`, `close`,
+   `destroy`, `login`, `logout`, and `open`/`close` are no-ops in inline mode.
+   There is no runtime "send this message" call.
+
+Route embed vs API by what the user wants: a chat UI on a page, its branding,
+its starting view, or embed sign-in are **embed**; programmatic chat, transcripts,
+audience analytics, contacts, and knowledge-base writes are **API**. The two
+share no state the host page can observe, so "read what someone said in my
+embed" is an API question (`/v3/conversation/list`, `/v4/contacts/{id}/threads`).
 
 ## Clone discovery
 

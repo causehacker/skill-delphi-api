@@ -1,6 +1,8 @@
 # Delphi API Safe Skill
 
-A production-ready, non-technical-safe skill package for testing and troubleshooting the Delphi **V3** API (conversations, streaming, voice, knowledge-base search) and the Delphi **V4** Developer Platform API (contacts, knowledge-base writes, outbound messaging, webhooks, integrations).
+A production-ready, non-technical-safe skill package for testing and troubleshooting the Delphi **V3** API (conversations, streaming, voice, knowledge-base search), the Delphi **V4** Developer Platform API (contacts, knowledge-base writes, outbound messaging, webhooks, integrations), and the Delphi **web embed** (browser, no API key).
+
+> **The web embed is a third surface, not an API.** It's authenticated by channel ID and origin. The current `www.delphi.ai/embed.js` creates a genuinely cross-origin iframe, so host-page scripts cannot reach the chat DOM — a first message is set by putting `q` on the iframe URL, and the `postMessage` bridge is SSO-only. Full capability map and debugging checklist in [`delphi-api-safe/references/embed.md`](delphi-api-safe/references/embed.md).
 
 > **Both surfaces now have chat.** As of 2026-08-02 V4 gained conversations, SSE streaming, and stateless ask — so route by *capability*, not version. V4 additionally offers a **synchronous** send (no SSE parsing) and idempotent conversation creation. Still V3-only: voice, knowledge-base search, and the KB agent. Still V4-only: contacts/CRM, content writes, outbound SMS/email, webhooks, integrations. See [`delphi-api-safe/references/v4-endpoints.md`](delphi-api-safe/references/v4-endpoints.md) for the full map.
 >
@@ -24,6 +26,7 @@ This repo contains:
 
 - Runs safe Delphi V3 checks for conversation, stream, search, agent, users, tags, and user info endpoints
 - Runs safe Delphi V4 checks for profile, conversations, contacts, content, integrations, and webhook endpoints — read-only by default, with destructive endpoints (`/v4/send`, `/v4/data-deletion-requests`, content delete, integration publish) deliberately excluded from the harness
+- Answers web embed questions correctly for both generations — install, landing pages, styling, SSO, first-message prefill — and diagnoses embeds that render but misbehave
 - Distinguishes *scope gaps* (reported as SKIP — a provisioning issue) from real failures, and labels known platform outages so the harness doesn't go red for something you can't fix
 - Handles self-discovery first, then asks for missing required inputs
 - Never invents sensitive/user-specific values (emails, API keys)
