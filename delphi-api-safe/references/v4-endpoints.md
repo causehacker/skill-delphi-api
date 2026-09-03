@@ -3,9 +3,10 @@
 V4 is the **Delphi Developer Platform API** (`openapi: 3.1.0`, `info.version: 4.0.0`).
 Captured from the live spec at `GET /v4/openapi.json` and grounded in real tests.
 
-**Last cross-checked 2026-08-02: 47 paths / 65 operations** (up from 40 / 58 the
-previous day — Delphi added a conversational surface plus attachments; see
-"Conversations" below).
+**Last cross-checked against the live contract 2026-09-03: 47 paths / 65
+operations.** The operation count is unchanged from 2026-08-02. The full
+surface includes all 22 integration operations plus conversations and
+attachments; see those sections below.
 
 Base URL: `https://api.delphi.ai/v4`
 Authentication: `x-api-key` header, same as V3. **Existing V3 keys work against
@@ -29,7 +30,7 @@ chat path now has a V4 counterpart.
 |------|-----|-------|
 | Chat — create a conversation and send messages | **either** | V4 additionally offers a **synchronous** send (no SSE parsing). See the comparison below. |
 | SSE token streaming | **either** | V4's `/messages/stream` reuses V3's exact `CloneResponse` frame contract — existing parsers port unchanged |
-| One-shot Q&A with no conversation state | **either** | V3 `/conversation/ask`, V4 `/ask` — ⚠️ **both currently return 502**, see below |
+| One-shot Q&A with no conversation state | **either** | V3 `/conversation/ask`, V4 `/ask` — the 2026-08-02 outage was fixed; see the runtime note below |
 | Voice audio / TTS | **V3 only** | no V4 equivalent |
 | Knowledge-base search & the KB agent | **V3 only** | `/v3/search/*`, `/v3/agent/run` |
 | Audience sizing & retention analytics | **V3** | `/v3/users` + `/v3/conversation/list` |
@@ -100,7 +101,17 @@ counter-intuitive consequence verified on 2026-08-02:
 **Do not assume "newer key = more access."** The App-Launch advantage is the
 10k req/min rate limit, not breadth. On the newest V4 endpoints it is *narrower*.
 
-The full scope vocabulary observed on a fully-provisioned key (21 scopes):
+The OpenAPI operation descriptions explicitly name these scopes:
+
+```
+contacts:list       contacts:list:pii   contacts:read      content:read
+content:write       transcripts:read    integrations:source:read
+integrations:read   llm
+```
+
+Runtime testing on a fully provisioned key exposed this broader 21-scope
+vocabulary. Treat the additional names as runtime observations, not claims
+derived from OpenAPI:
 
 ```
 profile:read        content:read          content:write       contacts:read
@@ -170,8 +181,10 @@ The V4 evolution of V3's `/users`, with a materially richer object.
     `totalInteractionCount`, `source`, `isSmsOptIn`, `isEmailOptIn`,
     `email`*, `phone`* (*PII scope only)
 - `POST /v4/contacts` — **email-keyed upsert.**
-  - Body: `email` (required, the upsert key), `name`, `tags[]` (created if
-    needed, assigned idempotently), `accessTier` (`PUBLIC|INTERNAL`)
+  - Requires `contacts:read` according to the live OpenAPI description.
+  - Body: `email` (required, the upsert key), `name` (maximum 200 characters),
+    `tags[]` (created if needed, assigned idempotently), `accessTier`
+    (`PUBLIC|INTERNAL`)
   - Response: `{"data": {"contactId": "...", "wasCreated": true|false}}`
   - **`wasCreated` resolves the ambiguity that V3's `/users/lookup` left open.**
     In V3 you had to sweep the audience beforehand to know whether a lookup
@@ -181,6 +194,8 @@ The V4 evolution of V3's `/users`, with a materially richer object.
   Fields (verified): `id`, `name`, `email`, `phone`, `tags[]`, `accessTier`,
   `status`, `source`, `isAnonymous`, `isEmailOptIn`, `isSmsOptIn`,
   `totalInteractionCount`, `lastInteractedAt`, `createdAt`, `user`
+  - Detail rows may report `status: revoked`; the `GET /contacts` status filter
+    only accepts `active` or `invited`.
 - `PATCH /v4/contacts/{id}` — body `{"accessTier": "PUBLIC"|"INTERNAL"}`.
   Access tier only; this is not a general-purpose contact editor.
 - `GET /v4/contacts/{id}/threads` — cursor-paginated conversations, newest-first.
@@ -224,6 +239,9 @@ require `insights:read`) — see Scopes; most App-Launch keys lack both.
     `overrides.purpose` as well is a stronger lever, since it edits the persona
     rather than competing with it.
   - Response: `{"data": {"conversationId": "...", "existed": false}}`
+  - A caller-supplied `channelId` or `contactId` that does not resolve can
+    return `404`. This is distinct from the post-create thread-readiness lag
+    described below.
   - **`externalId` makes creation idempotent** — a second call with the same
     value returns the existing conversation (`existed: true`). Reusing it with a
     *different* contact, channel, or settings returns `409`. V3 has no equivalent;
@@ -308,9 +326,9 @@ Two-step upload, mirroring the V3 flow with camelCase fields.
 
 Then pass the attachment id in `attachmentIds[]` on a `/messages` call. The V3
 equivalent returns `status: indexed | skipped`, with `reason` one of
-`no_extractable_content`, `indexing_unavailable`, `unsupported_media_type` —
-**a `skipped` result is a success response, so check `status`, not just the HTTP
-code.**
+`no_extractable_content`, `indexing_unavailable`, `unsupported_media_type`, or
+`content_policy_violation`. **A `skipped` result is a success response, so
+check `status`, not just the HTTP code.**
 
 ## Contact tags
 
@@ -325,7 +343,9 @@ code.**
   assignment is safe.
 - `POST /v4/contacts/bulk/tags` — apply an add/remove diff across explicit
   contact IDs *or* a filter target. Body: `target` (IDs or filter), `add[]`,
-  `remove[]`. No V3 equivalent — this is the bulk-segmentation primitive.
+  `remove[]`. `target.mode` is `ids` or `filter`; explicit `contactIds` are
+  UUIDs capped at 500. No V3 equivalent — this is the bulk-segmentation
+  primitive.
 
 ## Contact properties
 
@@ -359,7 +379,8 @@ the knowledge base; V4 can create, edit, and delete it.
   - Body: `items[]` (required), `folderId`, `accessTier` (`PUBLIC|INTERNAL|PRIVATE`, default `PUBLIC`)
   - Each item is one of three shapes:
     - `{"type": "qa", "question": "...", "answer": "..."}` (4,000 / 20,000 chars)
-    - `{"type": "note", "text": "...", "title": "..."}` (100,000 chars; title derived if omitted)
+    - `{"type": "note", "text": "...", "title": "..."}` (text maximum 100,000
+      chars; title optional, maximum 300 chars, and derived if omitted)
     - `{"type": "url", "url": "https://..."}` (2,048 chars)
   - **Ingestion is asynchronous.** Each item returns a `contentId` immediately,
     then processes in the background. Poll `GET /v4/content/{id}` — or filter
@@ -409,9 +430,10 @@ Outbound and generation primitives. None have a V3 equivalent.
   - **NEVER call this while testing.** It messages a real person. Not covered by
     the test harness by design.
 - `POST /v4/notify-owner` — freeform notification to the mind owner and editor
-  collaborators via Knock. Body: `subject` (≤200), `body` (≤1000); both
-  sanitized server-side. **The recipient is always the key owner** and is never
-  read from the request body — it cannot be aimed at a third party.
+  collaborators via Knock. Both body fields are required: `subject` (1–200)
+  and `body` (1–1000); both are sanitized server-side. **The recipient is
+  always the key owner** and is never read from the request body — it cannot be
+  aimed at a third party.
 
 ## LLM (OpenAI-compatible)
 
@@ -448,6 +470,9 @@ No V3 equivalent. Response nests: `{"data": {"subscriptions": [...]}}`.
   - Create body: `targetUrl` (required, HTTPS, **validated for SSRF safety**),
     `endpointId`, `name`, `eventType`, `trigger`, `inactivityThresholdDays`
     (1–365), `jmespathFilter` (null/empty delivers all)
+  - `inactivityThresholdDays` is description-deprecated. New clients should use
+    `trigger: {"type":"contact-inactivity-threshold-crossed",
+    "thresholdDays": <1-365>}`.
   - **Creating the first subscription reveals the account signing secret once**
     if no active secret exists yet. Capture it at creation — treat it as a
     credential.
@@ -460,7 +485,7 @@ No V3 equivalent. Response nests: `{"data": {"subscriptions": [...]}}`.
 `affiliate-product-mention-created`, `phone-number-captured`,
 `contact-inactivity-threshold-crossed`
 
-## Integrations (21 operations)
+## Integrations (22 operations)
 
 A full deploy-your-own-code platform: bundled JS runs on Cloudflare, triggered by
 Delphi events or cron. **The largest single area of V4 and the highest-risk.**

@@ -14,19 +14,27 @@ make docs
 # → http://localhost:8787/api-reference.html
 ```
 
-Enter your API key and optionally a user email in the top bar. Open any endpoint card and click **Send** to fire a live request. The `/v3/stream` endpoint streams tokens in real-time with a blinking cursor. See `README.md` for full details.
+Enter your API key and optionally a user email in the top bar. Open any endpoint
+card and click **Send** to fire a live request. Live mode is read-only by
+default: enable **Allow live writes** before a POST, PUT, PATCH, or DELETE.
+High-impact and model-backed operations require an additional confirmation.
+The `/v3/stream` endpoint streams tokens in real-time with a blinking cursor.
+See `README.md` for full details.
 
 Use the **V3 / V4 toggle** in the top bar to switch surfaces. **Both now have
 chat** — V4 gained conversations and streaming on 2026-08-02, plus a
 *synchronous* send that needs no SSE parsing. V3 keeps voice, knowledge-base
 search, and the KB agent; V4 keeps contacts, content writes, outbound messaging,
-webhooks, and integrations.
+webhooks, and integrations. The playground is cross-checked against the live
+OpenAPI contracts and exposes all 34 V3 operations and all 65 V4 operations.
 
 Banners on the endpoint cards tell you what's safe to press:
 
-- **red** — changes real state (sends a message, deletes content, deploys code)
-- **amber** — metered (consumes budget, tokens, or invokes the model)
-- **purple** — known outage; expect failures until Delphi ships a fix (none active as of 2026-08-02)
+- **red** — high-impact state change (delivers a real SMS/email, deletes
+  content, deploys code, or writes a runtime secret); the playground asks for
+  confirmation
+- **amber** — model-backed, metered, or externally visible (consumes generation
+  capacity or tokens, or notifies the owner)
 
 Two things that will otherwise look like your bug:
 
@@ -138,6 +146,7 @@ make smoke-search
 - `/v3/tags`
 - `/v3/search/query` (semantic + keyword knowledge base search, Immortal plan)
 - `/v3/search/content` (content source discovery, Immortal plan)
+- `/v3/agent/run` (model-backed knowledge-base synthesis; opt in with `--test-agent`)
 - plus write endpoints when `--allow-write` is provided:
   - `PUT /v3/conversation/{id}/title`
   - `DELETE /v3/conversation/{id}`

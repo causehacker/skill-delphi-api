@@ -8,5 +8,10 @@
   "tag_name": "",
   "info_text": "",
   "test_search": false,
-  "search_query": "What is your background?"
+  "search_query": "What is your background?",
+  "v4_test_conversations": false,
+  "v4_test_ask": false,
+  "v4_test_generate": false,
+  "v4_test_llm": false,
+  "v4_idempotency_key": ""
 }

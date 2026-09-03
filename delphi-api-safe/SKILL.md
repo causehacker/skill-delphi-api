@@ -35,22 +35,23 @@ limit, not access breadth. Verify with `POST /v4/conversations` before assuming.
 
 ## Core rules
 
-- Pick the surface deliberately, then stay on it — **V4 does not contain V3's
-  chat/voice/search endpoints, and V3 has none of V4's contacts/content/webhook
-  endpoints.** Neither is a superset.
+- Pick the surface deliberately, then stay on it — V3 and V4 both support chat,
+  but **V4 does not contain V3's voice/search/agent endpoints, and V3 has none
+  of V4's contacts/content/webhook endpoints.** Neither is a superset.
 - V3 rate limit: 120 requests per 60 seconds per key. **V4 publishes no numeric
   rate limit** — pace conservatively.
   Supported/tested V3 coverage includes:
   - **Clone**: `GET /v3/clone` — clone profile and identity discovery
   - **Conversations**:
     - `POST /v3/conversation` — create a conversation
-    - `POST /v3/stream` — SSE text streaming (supports `file_urls`, `slug`)
+    - `POST /v3/stream` — SSE text streaming (supports `file_urls`,
+      two-step-upload `attachment_ids`, and `slug`)
     - `GET /v3/conversation/list?email=...` — list conversations for a user
     - `GET /v3/conversation/{id}/history` — message history with optional citations
     - `PUT /v3/conversation/{id}/title` — update conversation title
     - `POST /v3/conversation/{id}/append-clone-message` — inject clone message
     - `DELETE /v3/conversation/{id}` — soft-delete conversation
-    - `POST /v3/conversation/ask` — one-off question, no conversation created ⚠️ **currently 502**
+    - `POST /v3/conversation/ask` — one-off question, no conversation created; the 2026-08-02 outage was fixed
     - `GET /v3/conversation/{id}/insights` — insight cards (async; empty is normal)
     - `POST /v3/conversation/{id}/attachments/presign` + `.../{attachment_id}/complete` — two-step file attach (≤10 MB; `status` may be `skipped` on a 200)
   - **Questions**: `GET /v3/questions` — suggested questions (pinned/unpinned/all)
@@ -88,7 +89,7 @@ limit, not access breadth. Verify with `POST /v4/conversations` before assuming.
     - `POST /v4/conversations/{id}/messages/stream` — SSE, reuses V3's `CloneResponse` frame contract verbatim
     - `GET /v4/conversations/{id}/insights` — insight cards (needs `insights:read`; async, empty is normal)
     - `POST /v4/conversations/{id}/attachments/presign` + `.../complete` — two-step file attach (≤10 MB)
-    - `POST /v4/ask` — stateless Q&A ⚠️ **currently 502**
+    - `POST /v4/ask` — stateless Q&A; the 2026-08-02 outage was fixed
   - **Profiles**: `GET /v4/profile` (identity discovery — the V4 analogue of `/v3/clone`), `GET /v4/profile/questions` (replaces `/v3/questions`), `GET /v4/profiles/{username}`
   - **Contacts** (the V4 evolution of `/v3/users`):
     - `GET /v4/contacts` — cohort list with far richer server-side filtering (search, tags, access tier, opt-in, interaction counts, date ranges, sort)
@@ -101,7 +102,7 @@ limit, not access breadth. Verify with `POST /v4/conversations` before assuming.
   - **Generate / Send / Notify**: `POST /v4/generate` (owner-voice text, **no retrieval**, daily owner budget), `POST /v4/send` (**real SMS/email to a contact**), `POST /v4/notify-owner`
   - **LLM**: `POST /v4/llm/chat/completions` — OpenAI-compatible, voiceless, non-streaming
   - **Webhooks**: `GET|POST /v4/webhook-subscriptions`, `GET|PUT|DELETE /v4/webhook-subscriptions/{id}` — 9 event types
-  - **Integrations** (21 ops): deploy bundled code triggered by events or cron — lifecycle, source, secrets, triggers, delivery log
+  - **Integrations** (22 ops): deploy bundled code triggered by events or cron — lifecycle, source, secrets, triggers, delivery log
   - **Data deletion**: `POST /v4/data-deletion-requests` — irreversible, queues contact data deletion
 - See `references/v3-endpoints.md` and `references/v4-endpoints.md` for request/response expectations and known quirks, and `references/embed.md` for the browser embed.
 - Never invent user data (emails, API keys, clone names, webhook URLs). Users often share test output with teammates or paste it into tickets — invented data causes confusion and erodes trust.
@@ -136,7 +137,7 @@ Ask what the user is trying to *do*, then route:
 | Text or email a contact | **V4** | `/v4/send` (consent enforced server-side) |
 | React to Delphi events | **V4** | `/v4/webhook-subscriptions` or `/v4/integrations` |
 | Use Delphi as a plain LLM | **V4** | `/v4/llm/chat/completions` |
-| One-shot Q&A, no conversation state | ⚠️ **neither** | `/v3/conversation/ask` and `/v4/ask` both return `502` — see below |
+| One-shot Q&A, no conversation state | **either** | `/v3/conversation/ask` or `/v4/ask`; both were working when last runtime-tested |
 
 Rules of thumb:
 

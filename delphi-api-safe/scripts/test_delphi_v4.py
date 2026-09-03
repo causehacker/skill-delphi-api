@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Delphi V4 (Developer Platform API) tester — READ-ONLY by default.
 
-V4 is a separate surface from V3, not a replacement: it has no chat, stream,
-voice, or search. This script exercises the safe read surface and, only when
-explicitly asked, the two metered generation endpoints.
+V4 is a separate surface from V3, not a replacement. Both support chat and
+streaming, while voice and knowledge-base search remain V3-only. This script
+exercises the safe V4 read surface and explicitly gated model-backed checks.
 
 DELIBERATELY NOT IMPLEMENTED — these mutate real-world state and must be run by
 hand with the user watching:

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
 import shlex
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 
 BASE = "https://api.delphi.ai/v3"
+USER_AGENT = "delphi-api-safe/1.0"
 
 
 def run(cmd: str) -> str:
@@ -20,7 +22,7 @@ def http_json(method: str, path: str, api_key: str, payload: Optional[dict] = No
     stream_flag = "-N " if stream else ""
     cmd = (
         f"curl -sS {stream_flag}--max-time {max_time} -w '\\nHTTP_STATUS:%{{http_code}}' -X {method} '{BASE}{path}' "
-        f"-H 'x-api-key: {api_key}' -H 'Content-Type: application/json'{data}"
+        f"-A '{USER_AGENT}' -H 'x-api-key: {api_key}' -H 'Content-Type: application/json'{data}"
     )
     raw = run(cmd)
     if "HTTP_STATUS:" not in raw:
@@ -36,7 +38,7 @@ def http_binary(method: str, path: str, api_key: str, payload: Optional[dict] = 
         data = f" -d {shlex.quote(json.dumps(payload))}"
     cmd = (
         f"curl -sS --max-time {max_time} -w '\\nHTTP_STATUS:%{{http_code}}' -o /tmp/delphi_voice_test.bin -X {method} '{BASE}{path}' "
-        f"-H 'x-api-key: {api_key}' -H 'Content-Type: application/json'{data}"
+        f"-A '{USER_AGENT}' -H 'x-api-key: {api_key}' -H 'Content-Type: application/json'{data}"
     )
     raw = run(cmd)
     if "HTTP_STATUS:" not in raw:
@@ -45,7 +47,6 @@ def http_binary(method: str, path: str, api_key: str, payload: Optional[dict] = 
     status = status.strip()
     # Count bytes in output file
     try:
-        import os
         byte_count = os.path.getsize("/tmp/delphi_voice_test.bin")
     except Exception:
         byte_count = 0

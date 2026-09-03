@@ -63,6 +63,14 @@
   .topbar input::placeholder { color: #aab0bc; }
   .topbar .status { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
   .topbar .status.ok { color: var(--get); }
+  .write-toggle {
+    display: flex; align-items: center; gap: 6px; white-space: nowrap;
+    color: var(--text-secondary); font-size: 11px; cursor: pointer;
+  }
+  .topbar .write-toggle input {
+    flex: none; width: 14px; height: 14px; min-width: 14px; padding: 0;
+    accent-color: var(--delete); cursor: pointer;
+  }
 
   /* ── Sidebar ── */
   .sidebar {
@@ -514,6 +522,10 @@
     <input id="apiKey" type="password" placeholder="x-api-key" spellcheck="false">
     <input id="userEmail" type="email" placeholder="user email (optional)" spellcheck="false">
   </div>
+  <label class="write-toggle" title="GET requests are enabled by default. Turn this on before any live POST, PUT, PATCH, or DELETE.">
+    <input id="liveWrites" type="checkbox">
+    Allow live writes
+  </label>
   <div id="resolvedUser" class="resolved-user" style="display:none">
     <span class="uid-label">user_id</span>
     <code id="resolvedUid" title=""></code>
@@ -528,7 +540,7 @@
 <!-- ── Main ── -->
 <div class="main">
   <h1 id="apiTitle">Delphi V3 API Reference</h1>
-  <p class="subtitle" id="apiSubtitle">Interactive endpoint explorer &mdash; 25 endpoints, zero dependencies. Fill in your API key above to enable live testing.</p>
+  <p class="subtitle" id="apiSubtitle">Interactive endpoint explorer &mdash; 34 operations, zero dependencies. Fill in your API key above to enable live testing.</p>
   <div id="modeBanner"></div>
   <div id="endpoints"></div>
 </div>
@@ -609,20 +621,27 @@ const ENDPOINTS_V3 = [
       }
     },
     { method: "POST", path: "/v3/stream", summary: "Stream response (SSE)", desc: "Send a message and receive a streamed SSE reply. Each SSE chunk contains a <code>current_token</code>. The final chunk (where <code>current_token</code> is <code>[DONE]</code>) includes the full <code>text</code>, <code>id</code>, <code>citations</code>, and <code>questions</code>.",
+      danger: "metered",
       stream: true,
       body: [
         { name: "conversation_id", type: "string", req: true, desc: "From /v3/conversation" },
         { name: "message", type: "string", req: true, desc: "User message text" },
-        { name: "file_urls", type: "string[]", req: false, desc: "Optional file attachments (comma-separated URLs)" },
+        { name: "slug", type: "string", req: false, desc: "Mind slug override" },
+        { name: "file_urls", type: "string[]", req: false, desc: "Optional uploaded file URLs (maximum 10)" },
+        { name: "attachment_ids", type: "UUID[]", req: false, desc: "IDs from the presign/complete attachment flow (maximum 10)" },
       ],
       extra: [
         { id: "stream_cid", placeholder: "conversation_id", label: "Conversation ID" },
         { id: "stream_msg", placeholder: "Hello!", label: "Message" },
+        { id: "stream_slug", placeholder: "slug", label: "Slug", req: false },
         { id: "stream_files", placeholder: "file_urls", label: "File URLs (comma-sep)", req: false },
+        { id: "stream_attachments", placeholder: "attachment_ids", label: "Attachment IDs (comma-sep)", req: false },
       ],
       bodyFn: (g, ex) => {
         const b = { conversation_id: ex.stream_cid || "<conversation_id>", message: ex.stream_msg || "Hello!" };
-        if (ex.stream_files) b.file_urls = ex.stream_files.split(",").map(u => u.trim()).filter(Boolean);
+        if (ex.stream_slug) b.slug = ex.stream_slug;
+        if (ex.stream_files) b.file_urls = ex.stream_files.split(",").map(u => u.trim()).filter(Boolean).slice(0, 10);
+        if (ex.stream_attachments) b.attachment_ids = ex.stream_attachments.split(",").map(id => id.trim()).filter(Boolean).slice(0, 10);
         return b;
       }
     },
@@ -671,6 +690,7 @@ const ENDPOINTS_V3 = [
       pathFn: (g, ex) => `/v3/conversation/${ex.del_cid || "<conversation_id>"}`
     },
     { method: "POST", path: "/v3/conversation/ask", summary: "Ask a one-off question", desc: "Generates a reply with <strong>no conversation created</strong> &mdash; stateless Q&amp;A. Visitor memory loads from <code>user_email</code> when provided; omit it for a fully anonymous, memory-free answer. Response is a flat <code>{answer, citations}</code>, <em>not</em> <code>data</code>-wrapped (the V4 equivalent is).<br><br>Verified working 2026-08-02 after a same-day outage. <code>idempotency_key</code> is honored: reusing it with the same question replays the answer, with a different question returns 409. Citations may come back empty even when the answer clearly used the knowledge base. Note the endpoint <strong>silently ignores unknown body fields</strong>, so a 200 doesn't prove a field is supported.",
+      danger: "metered",
       body: [
         { name: "question", type: "string", req: true, desc: "The question (1-50,000 chars)" },
         { name: "slug", type: "string", req: false, desc: "Which Mind to ask (defaults to the key's Mind)" },
@@ -719,7 +739,7 @@ const ENDPOINTS_V3 = [
         file_size: parseInt(ex.att3_size, 10) || 102400,
       })
     },
-    { method: "POST", path: "/v3/conversation/{conversation_id}/attachments/{attachment_id}/complete", summary: "Complete attachment", desc: "Step 2 of 2 &mdash; verify and index the uploaded file. <strong>Returns 200 even when the file was skipped</strong>, so check <code>status</code> (<code>indexed</code> | <code>skipped</code>), not just the HTTP code. On <code>skipped</code>, <code>reason</code> is <code>no_extractable_content</code>, <code>indexing_unavailable</code>, or <code>unsupported_media_type</code>.",
+    { method: "POST", path: "/v3/conversation/{conversation_id}/attachments/{attachment_id}/complete", summary: "Complete attachment", desc: "Step 2 of 2 &mdash; verify and index the uploaded file. <strong>Returns 200 even when the file was skipped</strong>, so check <code>status</code> (<code>indexed</code> | <code>skipped</code>), not just the HTTP code. On <code>skipped</code>, <code>reason</code> is <code>no_extractable_content</code>, <code>indexing_unavailable</code>, <code>unsupported_media_type</code>, or <code>content_policy_violation</code>.",
       pathParams: [{ name: "conversation_id", desc: "Conversation UUID" }, { name: "attachment_id", desc: "From presign" }],
       extra: [
         { id: "attc3_cid", placeholder: "conversation_id", label: "Conversation ID" },
@@ -752,7 +772,7 @@ const ENDPOINTS_V3 = [
   { section: "Users", endpoints: [
     { method: "GET", path: "/v3/users", summary: "List all users", desc: "Paginated list of all users in your audience. Pass <code>cursor</code> from previous response to page through results.",
       query: [
-        { name: "limit", type: "integer", req: false, desc: "Page size 1-1000 (default 50)" },
+        { name: "limit", type: "integer", req: false, desc: "Page size 1-200 (default 50)" },
         { name: "cursor", type: "string", req: false, desc: "Cursor from previous next_cursor" },
         { name: "active", type: "boolean", req: false, desc: "Filter: true=active, false=revoked" },
       ],
@@ -948,16 +968,46 @@ const ENDPOINTS_V3 = [
       body: [
         { name: "query", type: "string[]", req: true, desc: "Content search strings (titles, descriptions, topics)" },
         { name: "tag", type: "string", req: false, desc: "Access tier tag (e.g. PUBLIC, PREMIUM). Defaults to broadest access." },
+        { name: "limit", type: "integer", req: false, desc: "Maximum content sources (1-50, default 10)" },
       ],
       extra: [
         { id: "sc_query", placeholder: "fundraising, startup advice", label: "Query (comma-sep)" },
         { id: "sc_tag", placeholder: "PUBLIC", label: "Tag (access tier)", req: false },
+        { id: "sc_limit", placeholder: "10", label: "Limit (1-50)", type: "integer", req: false },
       ],
       bodyFn: (g, ex) => {
         const b = {};
         const q = (ex.sc_query || "").split(",").map(s => s.trim()).filter(Boolean);
         b.query = q.length ? q : ["general"];
         if (ex.sc_tag) b.tag = ex.sc_tag.trim();
+        if (ex.sc_limit) b.limit = Math.min(50, Math.max(1, parseInt(ex.sc_limit, 10) || 10));
+        return b;
+      }
+    },
+  ]},
+  { section: "Agent", endpoints: [
+    { method: "POST", path: "/v3/agent/run", summary: "Run knowledge-base agent", desc: "Run a multi-strategy agent over the Mind's knowledge base. Unlike <code>/v3/search/query</code>, this returns a synthesized <code>finalResult</code> plus a reasoning trace. It is model-backed and heavier than a chunk search.",
+      danger: "metered",
+      body: [
+        { name: "objective", type: "string", req: true, desc: "Question or task" },
+        { name: "thinking_time", type: "number", req: false, desc: "Reasoning budget in seconds (1-120)" },
+        { name: "schema", type: "string", req: false, desc: "Optional output-shape instruction" },
+        { name: "priors", type: "string", req: false, desc: "Optional seed context" },
+        { name: "tag", type: "string", req: false, desc: "Optional access-tier scope" },
+      ],
+      extra: [
+        { id: "agent_objective", placeholder: "Summarize the key themes in the knowledge base.", label: "Objective" },
+        { id: "agent_thinking", placeholder: "10", label: "Thinking Time", type: "integer", req: false },
+        { id: "agent_schema", placeholder: "schema", label: "Schema", req: false },
+        { id: "agent_priors", placeholder: "priors", label: "Priors", req: false },
+        { id: "agent_tag", placeholder: "PUBLIC", label: "Tag", req: false },
+      ],
+      bodyFn: (g, ex) => {
+        const b = { objective: ex.agent_objective || "Summarize the key themes in the knowledge base." };
+        if (ex.agent_thinking) b.thinking_time = Math.min(120, Math.max(1, parseInt(ex.agent_thinking, 10) || 10));
+        if (ex.agent_schema) b.schema = ex.agent_schema;
+        if (ex.agent_priors) b.priors = ex.agent_priors;
+        if (ex.agent_tag) b.tag = ex.agent_tag;
         return b;
       }
     },
@@ -968,6 +1018,7 @@ const ENDPOINTS_V3 = [
   ]},
   { section: "Voice", endpoints: [
     { method: "POST", path: "/v3/voice/stream", summary: "Stream voice response (PCM)", desc: "Send a message and receive a streamed PCM audio response. Returns raw 24kHz 16-bit mono PCM. Clone must have a voice configured. Create a conversation first via <code>POST /v3/conversation</code>.",
+      danger: "metered",
       body: [
         { name: "conversation_id", type: "string", req: true, desc: "From /v3/conversation" },
         { name: "message", type: "string", req: true, desc: "User message (1-10,000 chars)" },
@@ -979,6 +1030,7 @@ const ENDPOINTS_V3 = [
       bodyFn: (g, ex) => ({ conversation_id: ex.voice_cid || "<conversation_id>", message: ex.voice_msg || "Hello!" })
     },
     { method: "POST", path: "/v3/voice/synthesize", summary: "Synthesize speech (TTS)", desc: "Convert text to speech audio. No conversation needed — just text in, audio out. Clone must have a voice configured. With <code>?stream=true</code> returns raw PCM stream; without it returns base64-encoded PCM in JSON.",
+      danger: "metered",
       body: [
         { name: "text", type: "string", req: true, desc: "Text to synthesize (1-10,000 chars)" },
       ],
@@ -999,7 +1051,7 @@ const ENDPOINTS_V3 = [
 ];
 
 /* ── V4: Delphi Developer Platform API ──
-   Separate surface from V3 — no chat/stream/voice/search here.
+   Separate surface from V3. Both support chat/streaming; voice and KB search are V3-only.
    Responses wrap in {"data": ...}; errors are {"type","code","message"}.
    `danger` marks endpoints that mutate real-world state:
      "destructive" — irreversible or externally visible (red)
@@ -1077,11 +1129,17 @@ const ENDPOINTS_V4 = [
       extra: [
         { id: "v4stm_cid", placeholder: "conversationId", label: "Conversation ID" },
         { id: "v4stm_text", placeholder: "Hello!", label: "Message" },
+        { id: "v4stm_att", placeholder: "attachmentIds", label: "Attachment IDs (comma-sep)", req: false },
       ],
       pathFn: (g, ex) => `/v4/conversations/${ex.v4stm_cid || "<conversationId>"}/messages/stream`,
-      bodyFn: (g, ex) => ({ text: ex.v4stm_text || "Hello!" })
+      bodyFn: (g, ex) => {
+        const b = { text: ex.v4stm_text || "Hello!" };
+        if (ex.v4stm_att) b.attachmentIds = ex.v4stm_att.split(",").map(s => s.trim()).filter(Boolean).slice(0, 10);
+        return b;
+      }
     },
     { method: "POST", path: "/v4/ask", summary: "Ask (stateless)", desc: "Answers from the knowledge base <strong>without creating</strong> a conversation, session, message, attachment, or insight. Response is <code>{data:{answer, citations}}</code> &mdash; <code>data</code>-wrapped, unlike the V3 equivalent.<br><br>Verified working 2026-08-02 after a same-day outage. <strong>Does not require <code>conversations:write</code></strong> &mdash; confirmed on an App-Launch key that 403s on the conversation endpoints, so for scope-limited keys this is the only one-shot-answer route. <code>idempotencyKey</code> is honored (409 on reuse with different input).",
+      danger: "metered",
       body: [
         { name: "question", type: "string", req: true, desc: "The question (1-50,000)" },
         { name: "contactId", type: "string", req: false, desc: "Informs the answer with that contact's identity/tier" },
@@ -1523,30 +1581,177 @@ const ENDPOINTS_V4 = [
   ]},
 
   { section: "Integrations", endpoints: [
-    { method: "GET", path: "/v4/integrations", summary: "List integrations", desc: "Cursor-paginated integration deployments. Integrations run bundled JS on Cloudflare, triggered by Delphi events or cron. <strong>Only read operations are exposed here</strong> &mdash; publish/push/activate/delete and secret writes deploy or tear down live code and should be run deliberately, not from a docs page.",
+    { method: "GET", path: "/v4/integrations", summary: "List integrations", desc: "Cursor-paginated integration deployments. Integrations run bundled JS on Cloudflare, triggered by Delphi events or cron.",
       query: [{ name: "limit", type: "integer", req: false, desc: "1-200 (default 50)" }],
       extra: [{ id: "v4i_lim", placeholder: "50", label: "Limit", type: "integer", req: false }],
       queryFn: (g, ex) => `?limit=${ex.v4i_lim || "50"}`
+    },
+    { method: "POST", path: "/v4/integrations", summary: "Create integration", desc: "Persist an already-bundled integration. Creation does not publish it; call the publish operation separately. The source audit is advisory and never gates creation.",
+      danger: "destructive",
+      body: [
+        { name: "name", type: "string", req: true, desc: "Owner-unique integration name" },
+        { name: "codeBundle", type: "string", req: true, desc: "Bundled JavaScript (maximum 1,000,000 characters)" },
+        { name: "declaredHosts", type: "string[]", req: false, desc: "Runtime egress allowlist" },
+        { name: "subscribedEvents", type: "string[]", req: false, desc: "Delphi event triggers" },
+        { name: "cron", type: "string|null", req: false, desc: "Optional cron expression" },
+      ],
+      extra: [
+        { id: "v4ic_name", placeholder: "scheduled-followup", label: "Name" },
+        { id: "v4ic_bundle", placeholder: "export default { fetch() {} }", label: "Code Bundle" },
+        { id: "v4ic_hosts", placeholder: "api.example.com", label: "Declared Hosts (comma-sep)", req: false },
+        { id: "v4ic_events", placeholder: "contact-created", label: "Events (comma-sep)", req: false },
+        { id: "v4ic_cron", placeholder: "0 9 * * *", label: "Cron", req: false },
+      ],
+      bodyFn: (g, ex) => {
+        const b = { name: ex.v4ic_name || "<integration_name>", codeBundle: ex.v4ic_bundle || "<bundled_javascript>" };
+        if (ex.v4ic_hosts) b.declaredHosts = ex.v4ic_hosts.split(",").map(v => v.trim()).filter(Boolean);
+        if (ex.v4ic_events) b.subscribedEvents = ex.v4ic_events.split(",").map(v => v.trim()).filter(Boolean);
+        if (ex.v4ic_cron) b.cron = ex.v4ic_cron;
+        return b;
+      }
+    },
+    { method: "POST", path: "/v4/integrations/push", summary: "Push integration by slug", desc: "Create or update by owner-unique name. New integrations deploy by default; re-pushing an active integration hot-swaps its live bundle. A 503 can mean code was stored but nothing went live, so re-read state before retrying.",
+      danger: "destructive",
+      body: [
+        { name: "name", type: "string", req: true, desc: "Owner-unique integration name/slug" },
+        { name: "codeBundle", type: "string", req: true, desc: "Bundled JavaScript (maximum 1,000,000 characters)" },
+        { name: "activate", type: "boolean", req: false, desc: "Deploy a newly created integration (default true)" },
+      ],
+      extra: [
+        { id: "v4ip_name", placeholder: "scheduled-followup", label: "Name" },
+        { id: "v4ip_bundle", placeholder: "export default { fetch() {} }", label: "Code Bundle" },
+        { id: "v4ip_activate", placeholder: "activate", label: "Activate", type: "select", options: ["true", "false"], req: false },
+      ],
+      bodyFn: (g, ex) => ({
+        name: ex.v4ip_name || "<integration_name>",
+        codeBundle: ex.v4ip_bundle || "<bundled_javascript>",
+        activate: ex.v4ip_activate !== "false",
+      })
     },
     { method: "GET", path: "/v4/integrations/{id}", summary: "Get integration", desc: "One deployment including advisory audit findings. The raw code bundle is never returned on this shape. Note the advisory audit <strong>never gates a deploy</strong> &mdash; a clean audit is not a safety guarantee.",
       pathParams: [{ name: "id", desc: "Integration deployment ID" }],
       extra: [{ id: "v4ig_id", placeholder: "integration_id", label: "Integration ID" }],
       pathFn: (g, ex) => `/v4/integrations/${ex.v4ig_id || "<integration_id>"}`
     },
+    { method: "DELETE", path: "/v4/integrations/{id}", summary: "Delete integration", desc: "Unpublish an active runtime, then soft-delete its private subscriptions and deployment record. <code>forceOrphan=true</code> commits deletion even if runtime teardown fails.",
+      danger: "destructive",
+      pathParams: [{ name: "id", desc: "Integration deployment ID" }],
+      query: [{ name: "forceOrphan", type: "boolean", req: false, desc: "Delete the record even if Cloudflare teardown fails" }],
+      extra: [
+        { id: "v4id_id", placeholder: "integration_id", label: "Integration ID" },
+        { id: "v4id_force", placeholder: "forceOrphan", label: "Force Orphan", type: "select", options: ["false", "true"], req: false },
+      ],
+      pathFn: (g, ex) => `/v4/integrations/${ex.v4id_id || "<integration_id>"}`,
+      queryFn: (g, ex) => ex.v4id_force === "true" ? "?forceOrphan=true" : ""
+    },
     { method: "GET", path: "/v4/integrations/by-slug/{slug}", summary: "Get integration by slug", desc: "Resolve a deployment by its owner-unique slug (the integration <code>name</code>).",
       pathParams: [{ name: "slug", desc: "Owner-unique slug" }],
       extra: [{ id: "v4is_slug", placeholder: "scheduled-followup", label: "Slug" }],
       pathFn: (g, ex) => `/v4/integrations/by-slug/${encodeURIComponent(ex.v4is_slug || "<slug>")}`
+    },
+    { method: "DELETE", path: "/v4/integrations/by-slug/{slug}", summary: "Delete integration by slug", desc: "Resolve by slug, unpublish if active, then soft-delete the deployment and private subscriptions.",
+      danger: "destructive",
+      pathParams: [{ name: "slug", desc: "Owner-unique slug" }],
+      extra: [{ id: "v4isd_slug", placeholder: "scheduled-followup", label: "Slug" }],
+      pathFn: (g, ex) => `/v4/integrations/by-slug/${encodeURIComponent(ex.v4isd_slug || "<slug>")}`
+    },
+    { method: "GET", path: "/v4/integrations/by-slug/{slug}/source", summary: "Read integration source by slug", desc: "Return the raw authored source snapshot for a source-backed integration. API keys require <code>integrations:source:read</code>.",
+      pathParams: [{ name: "slug", desc: "Owner-unique slug" }],
+      extra: [{ id: "v4iss_slug", placeholder: "scheduled-followup", label: "Slug" }],
+      pathFn: (g, ex) => `/v4/integrations/by-slug/${encodeURIComponent(ex.v4iss_slug || "<slug>")}/source`
+    },
+    { method: "POST", path: "/v4/integrations/by-slug/{slug}/activate", summary: "Activate integration by slug", desc: "Make an integration live. Activating an already-active integration is an idempotent no-op.",
+      danger: "destructive",
+      pathParams: [{ name: "slug", desc: "Owner-unique slug" }],
+      extra: [{ id: "v4isa_slug", placeholder: "scheduled-followup", label: "Slug" }],
+      pathFn: (g, ex) => `/v4/integrations/by-slug/${encodeURIComponent(ex.v4isa_slug || "<slug>")}/activate`
+    },
+    { method: "POST", path: "/v4/integrations/by-slug/{slug}/deactivate", summary: "Deactivate integration by slug", desc: "Stop an integration while retaining its code for later reactivation. Already-inactive is an idempotent no-op.",
+      danger: "destructive",
+      pathParams: [{ name: "slug", desc: "Owner-unique slug" }],
+      extra: [{ id: "v4isx_slug", placeholder: "scheduled-followup", label: "Slug" }],
+      pathFn: (g, ex) => `/v4/integrations/by-slug/${encodeURIComponent(ex.v4isx_slug || "<slug>")}/deactivate`
     },
     { method: "GET", path: "/v4/integrations/{id}/triggers", summary: "Read integration triggers", desc: "Event subscriptions and per-event JMESPath filters that trigger this integration.",
       pathParams: [{ name: "id", desc: "Integration deployment ID" }],
       extra: [{ id: "v4it_id", placeholder: "integration_id", label: "Integration ID" }],
       pathFn: (g, ex) => `/v4/integrations/${ex.v4it_id || "<integration_id>"}/triggers`
     },
+    { method: "PUT", path: "/v4/integrations/{id}/triggers", summary: "Update integration triggers", desc: "Replace all event subscriptions and filters for an integration. String entries are shorthand for event types; inactivity triggers require an object with <code>thresholdDays</code>.",
+      danger: "destructive",
+      pathParams: [{ name: "id", desc: "Integration deployment ID" }],
+      body: [{ name: "subscribedEvents", type: "array", req: true, desc: "Complete replacement event list" }],
+      extra: [
+        { id: "v4itu_id", placeholder: "integration_id", label: "Integration ID" },
+        { id: "v4itu_events", placeholder: "contact-created,thread-session-ended", label: "Events (comma-sep)" },
+      ],
+      pathFn: (g, ex) => `/v4/integrations/${ex.v4itu_id || "<integration_id>"}/triggers`,
+      bodyFn: (g, ex) => ({ subscribedEvents: (ex.v4itu_events || "").split(",").map(v => v.trim()).filter(Boolean) })
+    },
+    { method: "GET", path: "/v4/integrations/{id}/source", summary: "Read integration source", desc: "Return the raw authored source snapshot for a source-backed integration. API keys require <code>integrations:source:read</code>.",
+      pathParams: [{ name: "id", desc: "Integration deployment ID" }],
+      extra: [{ id: "v4irs_id", placeholder: "integration_id", label: "Integration ID" }],
+      pathFn: (g, ex) => `/v4/integrations/${ex.v4irs_id || "<integration_id>"}/source`
+    },
+    { method: "PUT", path: "/v4/integrations/{id}/source", summary: "Update integration source", desc: "Replace the authored source snapshot used for portal readback. This does not replace the deployed bundle.",
+      danger: "destructive",
+      pathParams: [{ name: "id", desc: "Integration deployment ID" }],
+      body: [{ name: "sourceSnapshot", type: "object", req: true, desc: "One to 64 relative source files" }],
+      extra: [
+        { id: "v4isu_id", placeholder: "integration_id", label: "Integration ID" },
+        { id: "v4isu_path", placeholder: "src/index.ts", label: "Source Path" },
+        { id: "v4isu_content", placeholder: "export default {}", label: "Source Content" },
+      ],
+      pathFn: (g, ex) => `/v4/integrations/${ex.v4isu_id || "<integration_id>"}/source`,
+      bodyFn: (g, ex) => ({ sourceSnapshot: { files: [{ path: ex.v4isu_path || "src/index.ts", content: ex.v4isu_content || "export default {}" }] } })
+    },
+    { method: "PUT", path: "/v4/integrations/{id}/build-artifact", summary: "Attach build artifact", desc: "Replace the persisted bundled JavaScript and related runtime metadata. Bundling happens before this API call.",
+      danger: "destructive",
+      pathParams: [{ name: "id", desc: "Integration deployment ID" }],
+      body: [
+        { name: "codeBundle", type: "string", req: true, desc: "Bundled JavaScript (maximum 1,000,000 characters)" },
+        { name: "sourceHash", type: "string", req: false, desc: "Optional source hash" },
+        { name: "declaredHosts", type: "string[]", req: false, desc: "Runtime egress allowlist" },
+      ],
+      extra: [
+        { id: "v4iba_id", placeholder: "integration_id", label: "Integration ID" },
+        { id: "v4iba_bundle", placeholder: "export default { fetch() {} }", label: "Code Bundle" },
+        { id: "v4iba_hash", placeholder: "sha256", label: "Source Hash", req: false },
+        { id: "v4iba_hosts", placeholder: "api.example.com", label: "Declared Hosts (comma-sep)", req: false },
+      ],
+      pathFn: (g, ex) => `/v4/integrations/${ex.v4iba_id || "<integration_id>"}/build-artifact`,
+      bodyFn: (g, ex) => {
+        const b = { codeBundle: ex.v4iba_bundle || "<bundled_javascript>" };
+        if (ex.v4iba_hash) b.sourceHash = ex.v4iba_hash;
+        if (ex.v4iba_hosts) b.declaredHosts = ex.v4iba_hosts.split(",").map(v => v.trim()).filter(Boolean);
+        return b;
+      }
+    },
     { method: "GET", path: "/v4/integrations/{id}/secrets", summary: "List secret names", desc: "Required and stored runtime secret <em>names</em> only. Plaintext values are never returned.",
       pathParams: [{ name: "id", desc: "Integration deployment ID" }],
       extra: [{ id: "v4ix_id", placeholder: "integration_id", label: "Integration ID" }],
       pathFn: (g, ex) => `/v4/integrations/${ex.v4ix_id || "<integration_id>"}/secrets`
+    },
+    { method: "PUT", path: "/v4/integrations/{id}/secrets/{name}", summary: "Set integration secret", desc: "Create or replace one runtime secret. Plaintext is accepted once and never returned. Avoid screen sharing or copying the generated curl after entering a real secret.",
+      danger: "destructive",
+      pathParams: [{ name: "id", desc: "Integration deployment ID" }, { name: "name", desc: "Secret name" }],
+      body: [{ name: "plaintext", type: "string", req: true, desc: "Secret value (maximum 16,384 characters)" }],
+      extra: [
+        { id: "v4ixu_id", placeholder: "integration_id", label: "Integration ID" },
+        { id: "v4ixu_name", placeholder: "API_TOKEN", label: "Secret Name" },
+        { id: "v4ixu_value", placeholder: "secret value", label: "Plaintext" },
+      ],
+      pathFn: (g, ex) => `/v4/integrations/${ex.v4ixu_id || "<integration_id>"}/secrets/${encodeURIComponent(ex.v4ixu_name || "<name>")}`,
+      bodyFn: (g, ex) => ({ plaintext: ex.v4ixu_value || "<secret_value>" })
+    },
+    { method: "DELETE", path: "/v4/integrations/{id}/secrets/{name}", summary: "Delete integration secret", desc: "Remove one runtime secret. A live integration may fail after this if it requires the secret.",
+      danger: "destructive",
+      pathParams: [{ name: "id", desc: "Integration deployment ID" }, { name: "name", desc: "Secret name" }],
+      extra: [
+        { id: "v4ixd_id", placeholder: "integration_id", label: "Integration ID" },
+        { id: "v4ixd_name", placeholder: "API_TOKEN", label: "Secret Name" },
+      ],
+      pathFn: (g, ex) => `/v4/integrations/${ex.v4ixd_id || "<integration_id>"}/secrets/${encodeURIComponent(ex.v4ixd_name || "<name>")}`
     },
     { method: "GET", path: "/v4/integrations/{id}/log", summary: "Browse event delivery log", desc: "Keyset-paginated delivery log for the private webhook that triggers this integration. Metadata is visible to any reader, but captured request/response bodies and headers are editor/owner-only. Returns <code>{data, response_metadata}</code> &mdash; not the usual <code>nextCursor</code> shape.",
       pathParams: [{ name: "id", desc: "Integration deployment ID" }],
@@ -1566,6 +1771,25 @@ const ENDPOINTS_V4 = [
         if (ex.v4il_out) p.set("outcome", ex.v4il_out);
         return "?" + p.toString();
       }
+    },
+    { method: "POST", path: "/v4/integrations/{id}/publish", summary: "Publish integration", desc: "Validate and deploy the persisted bundle, secrets, cron, and egress allowlist to the runtime. Audit findings are advisory and never block deployment.",
+      danger: "destructive",
+      pathParams: [{ name: "id", desc: "Integration deployment ID" }],
+      extra: [{ id: "v4ipb_id", placeholder: "integration_id", label: "Integration ID" }],
+      pathFn: (g, ex) => `/v4/integrations/${ex.v4ipb_id || "<integration_id>"}/publish`,
+      bodyFn: () => ({})
+    },
+    { method: "POST", path: "/v4/integrations/{id}/regenerate-overview", summary: "Regenerate integration overview", desc: "Queue a fresh generated Overview while preserving the previous one until replacement completes.",
+      danger: "metered",
+      pathParams: [{ name: "id", desc: "Integration deployment ID" }],
+      extra: [{ id: "v4iro_id", placeholder: "integration_id", label: "Integration ID" }],
+      pathFn: (g, ex) => `/v4/integrations/${ex.v4iro_id || "<integration_id>"}/regenerate-overview`
+    },
+    { method: "POST", path: "/v4/integrations/{id}/unpublish", summary: "Unpublish integration", desc: "Remove the cached runtime bundle and cron, then mark the deployment inactive. A 503 leaves the record unchanged.",
+      danger: "destructive",
+      pathParams: [{ name: "id", desc: "Integration deployment ID" }],
+      extra: [{ id: "v4iup_id", placeholder: "integration_id", label: "Integration ID" }],
+      pathFn: (g, ex) => `/v4/integrations/${ex.v4iup_id || "<integration_id>"}/unpublish`
     },
   ]},
 
@@ -1593,6 +1817,27 @@ function toast(msg) {
   const t = $id("toast"); t.textContent = msg; t.classList.add("show");
   clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("show"), 2000);
 }
+
+function liveRequestBlockedReason(ep) {
+  if (ep.method === "GET") return null;
+  if (!$id("liveWrites").checked) {
+    return "Read-only mode: enable Allow live writes or use Copy curl";
+  }
+  if (ep.danger === "destructive") {
+    const approved = window.confirm(
+      `${ep.method} ${ep.path} changes real state. Confirm that you intend to run this operation.`
+    );
+    return approved ? null : "Request cancelled";
+  }
+  if (ep.danger === "metered") {
+    const approved = window.confirm(
+      `${ep.method} ${ep.path} may consume generation capacity, tokens, or send a notification. Continue?`
+    );
+    return approved ? null : "Request cancelled";
+  }
+  return null;
+}
+
 function getExtras(ep) {
   const out = {};
   (ep.extra || []).forEach(e => {
@@ -1780,7 +2025,7 @@ function renderEndpoint(ep, idx) {
       </div>
       <div class="endpoint-body">
         ${ep.danger === "destructive" ? `<div class="danger-banner destructive"><span class="dot"></span><strong>Changes real state.</strong> This writes, deletes, or sends something a real person can see. Confirm before you press Send.</div>` : ``}
-        ${ep.danger === "metered" ? `<div class="danger-banner metered"><span class="dot"></span><strong>Metered.</strong> Safe to call, but it consumes budget, tokens, or sends a notification. Don't loop it.</div>` : ``}
+        ${ep.danger === "metered" ? `<div class="danger-banner metered"><span class="dot"></span><strong>Model-backed, metered, or externally visible.</strong> This may consume generation capacity, tokens, or send an owner notification. Don't loop it.</div>` : ``}
         ${ep.danger === "broken" ? `<div class="danger-banner broken"><span class="dot"></span><strong>Known outage.</strong> A Delphi-side fault, not your key or payload &mdash; a permissions problem returns 403 naming the scope. Expect this to fail until it is fixed; re-test before relying on it.</div>` : ``}
         <div class="endpoint-section" style="color:var(--text-secondary);font-size:13px">${ep.desc}</div>
         ${renderParamsTable(ep.pathParams, "Path Parameters")}
@@ -1897,8 +2142,8 @@ function switchVersion(v) {
   const n = ENDPOINTS.reduce((a, s) => a + s.endpoints.length, 0);
   $id("apiTitle").textContent = `Delphi ${v.toUpperCase()} API Reference`;
   $id("apiSubtitle").innerHTML = (v === "v4")
-    ? `Developer Platform &mdash; contacts, knowledge-base writes, outbound messaging, webhooks, integrations. ${n} endpoints. <strong>No chat, voice, or search here</strong> &mdash; those live in V3.`
-    : `Interactive endpoint explorer &mdash; ${n} endpoints, zero dependencies. Fill in your API key above to enable live testing.`;
+    ? `Developer Platform &mdash; chat, contacts, knowledge-base writes, outbound messaging, webhooks, and integrations. ${n} operations. <strong>Voice and knowledge-base search remain V3-only.</strong>`
+    : `Interactive endpoint explorer &mdash; ${n} operations, zero dependencies. Fill in your API key above to enable live testing.`;
   $id("logoVer").textContent = v.toUpperCase() + " API";
   renderAll();
   window.scrollTo({ top: 0 });
@@ -2054,6 +2299,9 @@ async function sendStreamReq(idx) {
     toast("Curl copied! Paste terminal output below");
     return;
   }
+
+  const blockedReason = liveRequestBlockedReason(ep);
+  if (blockedReason) { toast(blockedReason); return; }
 
   const panel = $id("stream-" + idx);
   const statusEl = $id("stream-status-" + idx);
@@ -2218,6 +2466,9 @@ async function sendReq(idx) {
     toast("Curl copied! Paste terminal output below");
     return;
   }
+
+  const blockedReason = liveRequestBlockedReason(ep);
+  if (blockedReason) { toast(blockedReason); return; }
 
   const panel = $id("resp-" + idx);
   const statusEl = $id("resp-status-" + idx);
@@ -2830,7 +3081,7 @@ function formatPaste(idx) {
 /* ── Init ── */
 renderAll();
 // Keep the endpoint count honest instead of hardcoding it in the markup.
-$id("apiSubtitle").innerHTML = `Interactive endpoint explorer &mdash; ${flatEps.length} endpoints, zero dependencies. Fill in your API key above to enable live testing.`;
+$id("apiSubtitle").innerHTML = `Interactive endpoint explorer &mdash; ${flatEps.length} operations, zero dependencies. Fill in your API key above to enable live testing.`;
 
 // Persist inputs to localStorage
 ["apiKey", "userEmail"].forEach(id => {

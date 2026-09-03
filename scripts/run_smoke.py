@@ -51,6 +51,10 @@ def main():
                 cmd += ["--idempotency-key", idem]
         if cfg.get("v4_test_llm", False):
             cmd.append("--test-llm")
+        if cfg.get("v4_test_conversations", False):
+            cmd.append("--test-conversations")
+        if cfg.get("v4_test_ask", False):
+            cmd.append("--test-ask")
         run_cmd(cmd, api_key)
         return
 

@@ -5,9 +5,11 @@ against the live spec at `GET /v3/openapi.json` (requires a valid `x-api-key`;
 the default UA is 403'd by Cloudflare, same as other endpoints — set a custom
 `User-Agent`).
 
-**Last cross-checked 2026-08-02: 30 paths / 34 operations** (up from 26 / 30 —
-Delphi added `conversation/ask`, conversation insights, and the two-step
-attachment flow). V4 gained a parallel set the same day; see `v4-endpoints.md`.
+**Last cross-checked against the live contract 2026-09-03: 30 paths / 34
+operations.** The operation count is unchanged from 2026-08-02. The current
+contract adds `attachment_ids` to the documented `/stream` request alongside
+the older `file_urls` input. V4 has a parallel conversation and attachment
+surface; see `v4-endpoints.md`.
 
 Base URL: `https://api.delphi.ai`
 Authentication: `x-api-key` header on every request (key scoped to a single clone).
@@ -67,7 +69,11 @@ Rate limits: 120 requests per 60 seconds per API key. Exceeding returns `429`.
 - `POST /v3/stream`
   - Expected: `200` + SSE `data:` chunks + `[DONE]`
   - Body: `{"message": "...", "conversation_id": "..."}`
-  - Optional body fields: `file_urls` (string[], uploaded file URLs), `slug` (clone slug)
+  - Optional body fields:
+    - `file_urls` (string[], maximum 10): uploaded file URLs
+    - `attachment_ids` (UUID string[], maximum 10): attachment IDs returned by
+      the two-step presign/complete flow
+    - `slug` (string): clone slug
   - Known issue: some clones return `500 Internal Server Error` while others pass.
 
 - `GET /v3/conversation/list`
@@ -190,7 +196,8 @@ Rate limits: 120 requests per 60 seconds per API key. Exceeding returns `429`.
   — **added 2026-08-02.** Step 2: verify and index the uploaded file.
   - Response: `{ "attachment_id", "status", "reason"? }`
   - `status` is `indexed` **or** `skipped`. When `skipped`, `reason` is one of
-    `no_extractable_content`, `indexing_unavailable`, `unsupported_media_type`.
+    `no_extractable_content`, `indexing_unavailable`, `unsupported_media_type`,
+    or `content_policy_violation`.
   - **A `skipped` result still returns HTTP 200** — check `status`, not just the
     status code, or you'll believe a file was indexed when it wasn't.
 
@@ -210,7 +217,8 @@ Rate limits: 120 requests per 60 seconds per API key. Exceeding returns `429`.
 - `POST /v3/voice/stream`
   - Expected: `200` + raw binary PCM audio
   - Audio format: 24kHz sample rate, 16-bit signed little-endian, mono
-  - Body: `{"message": "...", "conversation_id": "..."}`
+  - Body: `{"message": "...", "conversation_id": "..."}` (`message` maximum
+    10,000 characters)
   - Response headers include `X-Audio-*` metadata (sample rate, format, etc.)
   - Response is streamed — read in chunks (8192 bytes recommended)
   - Requires clone to have a voice configured; returns error if not available
@@ -271,7 +279,8 @@ Rate limits: 120 requests per 60 seconds per API key. Exceeding returns `429`.
   - Sorted newest first.
 
 - `POST /v3/users/{user_id}/info`
-  - Body: `{"info": "...", "info_type": "..."}`
+  - Body: `{"info": "...", "info_type": "...", "source": "API"}`
+  - `source` is optional: `MESSAGE`, `MANUAL`, `INFERENCE`, or `API`.
   - Response: `{ "id", "text", "created_at", "updated_at", "message_id", "source", "info_type" }`
 
 - `PATCH /v3/users/{user_id}/info/{info_id}`
@@ -286,13 +295,21 @@ Rate limits: 120 requests per 60 seconds per API key. Exceeding returns `429`.
 Common `info_type` values:
 - `GOAL`, `PREFERENCES`, `INTERESTS`, `PERSONAL_INFO`, `EXPERTISE`, `SITUATION`, `BELIEF`, `COMMUNICATION_STYLE`, `EMOTIONAL_STATE`, `RELATIONSHIP`, `WHY_DELPHI`, `HOW_DELPHI`, `JOURNAL`
 
-- `GET /v3/users/{user_id}/flywheel` -> profile/flywheel data (undocumented — may be removed)
-- `GET /v3/users/{user_id}/tier` -> tier value (`JUST ME`, `PUBLIC`, `INTERNAL`, `GROWTH`, etc.)
+- `GET /v3/users/{user_id}/flywheel` -> profile/flywheel data. This operation
+  is present in the live OpenAPI contract, although its response schema remains
+  loosely typed.
+- `GET /v3/users/{user_id}/tier` -> tier value. The OpenAPI response is a plain
+  string; values such as `JUST ME`, `PUBLIC`, `INTERNAL`, and `GROWTH` are
+  runtime observations rather than a contract enum.
 - `GET /v3/users/{user_id}/usage` -> quota/usage with detailed breakdown:
   - Response: `{ "period": { "start", "end", "days_remaining" }, "quota": { "messages", "voice_seconds", "video_seconds" }, "usage": { ... }, "remaining": { ... } }`
-- `PATCH /v3/users/{user_id}` -> update user fields (undocumented — may change)
-- `POST /v3/users/{user_id}/revoke` -> deactivate (undocumented — may change)
-- `POST /v3/users/{user_id}/activate` -> reactivate (undocumented — may change)
+- `PATCH /v3/users/{user_id}` -> update `name`, `phone_number`, `sms_opt_in`,
+  `call_opt_in`, or `tier` (`PUBLIC` or `INTERNAL`). Response includes
+  `success`, `user_id`, `updated_fields`, and `message`.
+- `POST /v3/users/{user_id}/revoke` -> deactivate. Response includes
+  `relationship_id`, `active`, and `message`.
+- `POST /v3/users/{user_id}/activate` -> reactivate. Response includes
+  `relationship_id`, `active`, and `message`.
 
 Known quirk:
 - phone validation may reject valid E.164 numbers depending on backend state.
@@ -304,7 +321,9 @@ Known quirk:
   - Sorted newest first.
 
 - `POST /v3/tags`
-  - Body: `{"name": "...", "color": "blue"}` (color optional, defaults to "default")
+  - Body: `{"name": "...", "color": "blue"}` (`name` maximum 50 characters;
+    `color` is an optional free-form string). A `"default"` color has been
+    observed at runtime but is not declared as an OpenAPI default.
   - Returns `409` if tag name already exists.
 
 - `POST /v3/users/{user_id}/tags/{tag_name}`

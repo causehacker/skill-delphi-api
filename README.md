@@ -6,7 +6,7 @@ A production-ready, non-technical-safe skill package for testing and troubleshoo
 
 > **Both surfaces now have chat.** As of 2026-08-02 V4 gained conversations, SSE streaming, and stateless ask — so route by *capability*, not version. V4 additionally offers a **synchronous** send (no SSE parsing) and idempotent conversation creation. Still V3-only: voice, knowledge-base search, and the KB agent. Still V4-only: contacts/CRM, content writes, outbound SMS/email, webhooks, integrations. See [`delphi-api-safe/references/v4-endpoints.md`](delphi-api-safe/references/v4-endpoints.md) for the full map.
 >
-> ⚠️ **Two known issues** (verified 2026-08-02): the stateless `ask` endpoints (`/v3/conversation/ask`, `/v4/ask`) return `502` for all callers — reported to Delphi. And `POST /v4/conversations` is eventually consistent: sending a message immediately returns `404 "Thread not found"`; retry on 404 with ~1s backoff (ready in ~2–6s).
+> ⚠️ **Known integration quirk** (last verified 2026-08-02): `POST /v4/conversations` is eventually consistent. Sending a message immediately can return `404 "Thread not found"`; retry on 404 with ~1s backoff (ready in ~2–6s). The stateless `ask` outage from that date was fixed and both endpoints were working when re-tested.
 >
 > ⚠️ **Key choice matters more than version choice.** Legacy `dsk-` keys are unscoped and work everywhere. Newer `dlph_` App-Launch keys are *scoped* and most lack `conversations:write`, so they `403` on V4 chat despite being newer — their advantage is the 10k req/min rate limit, not access breadth.
 
@@ -25,7 +25,10 @@ This repo contains:
 ## What this skill does
 
 - Runs safe Delphi V3 checks for conversation, stream, search, agent, users, tags, and user info endpoints
-- Runs safe Delphi V4 checks for profile, conversations, contacts, content, integrations, and webhook endpoints — read-only by default, with destructive endpoints (`/v4/send`, `/v4/data-deletion-requests`, content delete, integration publish) deliberately excluded from the harness
+- Runs safe Delphi V4 checks for profile, contacts, content, integrations, and
+  webhooks by default; conversations and stateless ask are explicit opt-ins,
+  while destructive endpoints (`/v4/send`, `/v4/data-deletion-requests`,
+  content delete, integration publish) remain excluded from the CLI harness
 - Answers web embed questions correctly for both generations — install, landing pages, styling, SSO, first-message prefill — and diagnoses embeds that render but misbehave
 - Distinguishes *scope gaps* (reported as SKIP — a provisioning issue) from real failures, and labels known platform outages so the harness doesn't go red for something you can't fix
 - Handles self-discovery first, then asks for missing required inputs
@@ -144,7 +147,7 @@ secret writes — those mutate real-world state and should be run by hand.
 ## Interactive API Reference (browser)
 
 A single-page interactive explorer with a **V3 / V4 toggle** in the top bar —
-33 V3 endpoints and 49 V4 endpoints — with a live test harness, streaming SSE
+all 34 V3 operations and all 65 V4 operations — with a live test harness, streaming SSE
 support, and curl copy/paste.
 
 ### Quick start
@@ -164,9 +167,12 @@ python3 docs/serve.py --port 9000  # custom port
 ### What it does
 
 - **V3 / V4 toggle** in the top bar — switches the whole explorer between the two surfaces
-- **V3: 33 endpoint cards** (Conversations — now incl. ask/insights/attachments, Questions, Users, Tags, User Info, Search, Clone, Voice)
-- **V4: 49 endpoint cards** (Profile, **Conversations**, Contacts, Contact Tags, Contact Properties, Content, Generate & Send, LLM, Thread Sessions, Webhooks, Integrations, Data Deletion)
-- **Safety banners** — endpoints that change real state (send, delete, publish) get a red warning; metered ones (generate, LLM, chat) amber; the two known-broken `ask` endpoints get a purple outage notice
+- **V3: 34 operation cards** (Conversations, Questions, Users, Tags, User Info, Search, Agent, Clone, Voice)
+- **V4: 65 operation cards** (Profile, **Conversations**, Contacts, Contact Tags, Contact Properties, Content, Generate & Send, LLM, Thread Sessions, Webhooks, Integrations, Data Deletion)
+- **Safety banners** — high-impact state changes (send, delete, deploy, secret writes) get a red warning and an action-time confirmation; model-backed, metered, or externally visible operations get an amber warning
+- **Read-only live mode by default** — GET requests can run immediately, while
+  every live POST, PUT, PATCH, or DELETE requires enabling **Allow live writes**;
+  risky and model-backed calls then require an additional confirmation
 - **Send button** fires requests through a local CORS proxy — responses render inline. The proxy is version-agnostic, so `/api/v3/*` and `/api/v4/*` both work
 - **SSE streaming** for `/v3/stream` *and* `/v4/conversations/{id}/messages/stream` — tokens appear live with a blinking cursor, token counter, and raw SSE toggle (both use the same `CloneResponse` frame contract)
 - **Curl copy** on every endpoint — one click to clipboard, ready to paste in terminal
@@ -174,6 +180,19 @@ python3 docs/serve.py --port 9000  # custom port
 - **Field validation** — required fields highlight red with a shake animation before sending
 - **Static mode fallback** — works without the proxy (copy curl, paste output, click Format)
 - **Zero dependencies** — one HTML file + one Python file, no npm/node/build step
+
+### Contract drift check
+
+Verify that every operation in both authenticated live OpenAPI documents has a
+matching playground card:
+
+```bash
+make check-openapi
+```
+
+The check reads the key from `DELPHI_API_KEY` or the local gitignored
+`smoke-config.json`. It fetches both specifications in memory and never prints
+or persists the key.
 
 ### Stopping
 

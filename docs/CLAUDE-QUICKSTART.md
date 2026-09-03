@@ -52,11 +52,13 @@ User email for lookup: <real email>
 Read-only only.
 ```
 
-## Step 6) V4 Developer Platform (contacts, content, webhooks)
+## Step 6) V4 Developer Platform (chat, contacts, content, webhooks)
 
-V4 is a **separate surface** from V3 — it has no chat, streaming, voice, or
-search. Reach for it when you want to manage contacts, write to the knowledge
-base, or wire up webhooks.
+V4 is a **separate surface** from V3. Both support chat and streaming; V4 also
+offers synchronous message sends and idempotent conversation creation. Voice,
+knowledge-base search, and the KB agent remain V3-only. Reach for V4 when you
+want those chat ergonomics, contact management, knowledge-base writes, or
+webhooks.
 
 ```text
 Goal: V4 read-only sweep.

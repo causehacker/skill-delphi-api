@@ -1,4 +1,4 @@
-.PHONY: help setup smoke smoke-search smoke-full smoke-v4 package docs docs-stop
+.PHONY: help setup smoke smoke-search smoke-full smoke-v4 check-openapi package docs docs-stop
 
 help:
 	@echo "Commands:"
@@ -7,6 +7,7 @@ help:
 	@echo "  make smoke-search # V3 chat + knowledge base search tests"
 	@echo "  make smoke-full   # V3 full endpoint check using smoke-config.json"
 	@echo "  make smoke-v4     # V4 Developer Platform check (read-only by default)"
+	@echo "  make check-openapi # Verify playground coverage against both live specs"
 	@echo "  make package      # Rebuild dist/delphi-api-safe.skill"
 	@echo "  make docs         # Start interactive API reference (V3 + V4) at localhost:8787"
 	@echo "  make docs-stop    # Stop the API reference server"
@@ -25,6 +26,9 @@ smoke-full:
 
 smoke-v4:
 	python3 scripts/run_smoke.py --config smoke-config.json --api v4
+
+check-openapi:
+	python3 scripts/check_openapi_coverage.py --config smoke-config.json
 
 package:
 	python3 scripts/package_skill.py ./delphi-api-safe ./dist
