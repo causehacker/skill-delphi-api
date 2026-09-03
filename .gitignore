@@ -32,3 +32,33 @@ keys.json
 
 # Analysis output (contains customer PII — never commit)
 out/
+
+# Plaintext key export (local only)
+delphi-keys-export.txt
+
+# Obfuscated/encrypted baked key blobs (recoverable — never share)
+*.key.enc
+lewis.key.enc
+
+# Cursor local state
+.cursor/
+
+# Local working files — keep on disk, never commit (client-specific / WIP)
+delphi-migration-parity/
+delphi-migration-parity.skill
+lewis-delphi/
+scripts/build_deck.py
+scripts/domain_parity.py
+scripts/full_sweep.py
+scripts/gen_graphics.py
+scripts/mh_battery.py
+scripts/mh_compare_one.py
+scripts/mh_followup.py
+scripts/mh_multiturn.py
+scripts/mh_openers.py
+scripts/mh_quicktest.py
+scripts/mh_response_eval.py
+scripts/optin_active.py
+scripts/retention_model.py
+scripts/run_retention_eval.py
+scripts/timing_strict.py
