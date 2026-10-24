@@ -1,6 +1,6 @@
 ---
 name: delphi-api-safe
-description: Safely operate and troubleshoot the Delphi V3 API (conversations, streaming, voice, clone, knowledge-base search) and the Delphi V4 Developer Platform API (contacts/CRM, knowledge-base writes, outbound SMS/email, webhooks, integrations, OpenAI-compatible LLM) for technical and non-technical users. Use when a user asks to test Delphi API keys, run pass/fail checks across accounts, generate curl commands, debug HTTP 4xx/5xx errors, or prepare incident reports. Also use for audience and engagement analytics — sizing an audience ("how many users", "how many real emails", filtering out test/fake accounts) and measuring conversation retention ("retention", "return rate", "how many users came back", "how many have had conversations", repeat-visit and churn analysis from conversation data), including a correctly time-boxed, censoring-corrected "D30 retention" / "30-day retention" / "true 30 day retention" / "cohort retention" number distinct from all-time return-rate metrics. Also covers the browser web embed (embed.js / loader.js) — installing a clone on a web page, prefilling or auto-sending a first message, embed styling and landing pages, embed SSO, and debugging an embed that renders but misbehaves. Also trigger when the user says things like "is my clone working", "test this key", "run a smoke test", "check my Delphi", "new Delphi for [name]", "evaluate retention", "v4", "contacts", "upsert a contact", "add to the knowledge base", "set up a webhook", "embed", "embed.js", "data-channel", "put my clone on my site", "prefill the chat", "first message", or shares a dsk- or dlph_ API key and wants to verify it. If the user pastes a Delphi API key, a Delphi embed script tag, or mentions Delphi clones, minds, contacts, or embeds in any testing, troubleshooting, or audience-analytics context, use this skill.
+description: Safely operate and troubleshoot the Delphi V3 API (conversations, streaming, voice, clone, knowledge-base search) and the Delphi V4 Developer Platform API (contacts/CRM, knowledge-base writes, outbound SMS/email, webhooks, integrations, OpenAI-compatible LLM, and the OpenAI Responses-compatible agents endpoint) for technical and non-technical users. Use when a user asks to test Delphi API keys, run pass/fail checks across accounts, generate curl commands, debug HTTP 4xx/5xx errors, or prepare incident reports. Also use for audience and engagement analytics — sizing an audience ("how many users", "how many real emails", filtering out test/fake accounts) and measuring conversation retention ("retention", "return rate", "how many users came back", "how many have had conversations", repeat-visit and churn analysis from conversation data), including a correctly time-boxed, censoring-corrected "D30 retention" / "30-day retention" / "true 30 day retention" / "cohort retention" number distinct from all-time return-rate metrics. Also covers the browser web embed (embed.js / loader.js) — installing a clone on a web page, prefilling or auto-sending a first message, embed styling and landing pages, embed SSO, and debugging an embed that renders but misbehaves. Also trigger when the user says things like "is my clone working", "test this key", "run a smoke test", "check my Delphi", "new Delphi for [name]", "evaluate retention", "v4", "contacts", "upsert a contact", "add to the knowledge base", "set up a webhook", "agents endpoint", "OpenAI Responses", "use my Delphi in an agent", "embed", "embed.js", "data-channel", "put my clone on my site", "prefill the chat", "first message", or shares a dsk- or dlph_ API key and wants to verify it. If the user pastes a Delphi API key, a Delphi embed script tag, or mentions Delphi clones, minds, contacts, or embeds in any testing, troubleshooting, or audience-analytics context, use this skill.
 ---
 
 # Delphi API Safe
@@ -18,9 +18,9 @@ guidance below applies there.
 | | V3 — "Delphi External API" | V4 — "Delphi Developer Platform API" |
 |---|---|---|
 | Base | `https://api.delphi.ai/v3` | `https://api.delphi.ai/v4` |
-| Size | 30 paths / 34 ops | 47 paths / 65 ops |
+| Size | 30 paths / 34 ops | 49 paths / 67 ops |
 | Chat | ✅ create + SSE stream | ✅ create + SSE stream **+ synchronous send** |
-| Only here | voice, KB search, agent, audience analytics | contacts/CRM, KB **writes**, SMS/email, webhooks, integrations, LLM passthrough |
+| Only here | voice, KB search, agent, audience analytics | contacts/CRM, KB **writes**, SMS/email, webhooks, integrations, LLM passthrough, OpenAI Responses agents |
 | Envelope | bare objects | `{"data": ...}` (not uniform — check per endpoint) |
 | Errors | `{"detail": "..."}` | `{"type","code","message"}` |
 | Casing | `snake_case` | `camelCase` |
@@ -82,7 +82,7 @@ limit, not access breadth. Verify with `POST /v4/conversations` before assuming.
     - `POST /v3/search/content` — search content sources by title or description
   - **Agent**: `POST /v3/agent/run` — autonomous knowledge-base agent; takes an `objective` and returns a synthesized `finalResult` plus a reasoning trace, rather than raw chunks. Heavier than search — use it when the user wants a synthesized answer or multi-hop reasoning, not a chunk lookup.
 
-  Supported/tested **V4** coverage (65 operations; full detail in `references/v4-endpoints.md`):
+  Supported/tested **V4** coverage (67 operations; full detail in `references/v4-endpoints.md`):
   - **Conversations** (added 2026-08-02 — requires `conversations:write`):
     - `POST /v4/conversations` — create; `externalId` makes it idempotent (409 on reuse with different input)
     - `POST /v4/conversations/{id}/messages` — **send and wait, no SSE parsing** (the main ergonomic win over V3)
@@ -101,6 +101,7 @@ limit, not access breadth. Verify with `POST /v4/conversations` before assuming.
   - **Content (knowledge-base writes)**: `GET|POST /v4/content`, `GET|PATCH|DELETE /v4/content/{id}` — create QA pairs, notes, and URLs; editing a body **re-learns** it. V3 could only *search* content.
   - **Generate / Send / Notify**: `POST /v4/generate` (owner-voice text, **no retrieval**, daily owner budget), `POST /v4/send` (**real SMS/email to a contact**), `POST /v4/notify-owner`
   - **LLM**: `POST /v4/llm/chat/completions` — OpenAI-compatible, voiceless, non-streaming
+  - **Agents** (added 2026-10-24): `GET /v4/agents/models`, `POST /v4/agents/responses` — OpenAI **Responses** API with the mind's identity + PUBLIC knowledge; function tools (client-executed), streaming, structured output; `store:false`, no `previous_response_id`; each call takes one `/generate` budget slot
   - **Webhooks**: `GET|POST /v4/webhook-subscriptions`, `GET|PUT|DELETE /v4/webhook-subscriptions/{id}` — 9 event types
   - **Integrations** (22 ops): deploy bundled code triggered by events or cron — lifecycle, source, secrets, triggers, delivery log
   - **Data deletion**: `POST /v4/data-deletion-requests` — irreversible, queues contact data deletion
@@ -114,8 +115,8 @@ limit, not access breadth. Verify with `POST /v4/conversations` before assuming.
   code. Never call these without explicit, per-call user confirmation:
   `POST /v4/send` · `POST /v4/data-deletion-requests` · `DELETE /v4/content/{id}` ·
   any integrations publish/activate/push/delete · `PUT /v4/integrations/{id}/secrets/{name}`.
-  Treat `POST /v4/generate` and `POST /v4/llm/chat/completions` as metered — safe
-  but not free.
+  Treat `POST /v4/generate`, `POST /v4/agents/responses`, and
+  `POST /v4/llm/chat/completions` as metered — safe but not free.
 
 ## Choosing V3 vs V4
 
@@ -137,6 +138,7 @@ Ask what the user is trying to *do*, then route:
 | Text or email a contact | **V4** | `/v4/send` (consent enforced server-side) |
 | React to Delphi events | **V4** | `/v4/webhook-subscriptions` or `/v4/integrations` |
 | Use Delphi as a plain LLM | **V4** | `/v4/llm/chat/completions` |
+| Drop the mind (voice + public knowledge) into an OpenAI-SDK agent with tools or streaming | **V4** | `/v4/agents/responses` (base URL `/v4/agents`, `model: "delphi"`) |
 | One-shot Q&A, no conversation state | **either** | `/v3/conversation/ask` or `/v4/ask`; both were working when last runtime-tested |
 
 Rules of thumb:
@@ -640,6 +642,33 @@ curl -sS -X POST "https://api.delphi.ai/v4/llm/chat/completions" \
   -H "Content-Type: application/json" \
   -d '{"messages": [{"role": "user", "content": "<prompt>"}]}'
 ```
+
+### Agents: the mind behind an OpenAI Responses client (metered; one budget slot per call)
+
+```bash
+curl -sS "https://api.delphi.ai/v4/agents/models" \
+  -H "Authorization: Bearer $DELPHI_API_KEY"
+# -> {"object":"list","data":[{"id":"delphi","object":"model","created":0,"owned_by":"delphi"}]}
+
+curl -sS -X POST "https://api.delphi.ai/v4/agents/responses" \
+  -H "Authorization: Bearer $DELPHI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "delphi", "store": false, "input": "<question>"}'
+# -> raw OpenAI Response (no data envelope); text at output[].content[].text
+```
+
+Rules that trip people up (verified 2026-10-24, details in `references/v4-endpoints.md`):
+
+- `store` must be `false` and `model` must be `"delphi"`; `previous_response_id`,
+  `user`, `metadata`, hosted tools, and images return `400`. Send the full
+  history every turn.
+- When echoing a returned `function_call` item back, **drop its `namespace`
+  field**. Otherwise you get a misleading `400 "Input should be a valid string"`
+  (`param: input.str`).
+- Top-level `instructions` can override the persona entirely. A `system`
+  message in `input` cannot.
+- Retry an occasional fast `502 http_error` once before calling it an outage.
+- Expect ~8k input tokens per call before your prompt (persona + retrieval).
 
 ### Fetch either spec (both require a valid key)
 

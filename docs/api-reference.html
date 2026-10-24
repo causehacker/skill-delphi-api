@@ -1470,16 +1470,22 @@ const ENDPOINTS_V4 = [
         { name: "contactId", type: "string", req: true, desc: "Contact to deliver to" },
         { name: "channel", type: "string", req: true, desc: "sms | email" },
         { name: "body", type: "string", req: true, desc: "Message body" },
+        { name: "ctaLabel", type: "string", req: false, desc: "Email button label (1-80, default \"Chat Now\"). Ignored for SMS" },
+        { name: "ctaUrl", type: "string", req: false, desc: "Email button link (https, no credentials; defaults to the owner's profile). Ignored for SMS" },
         { name: "idempotencyKey", type: "string", req: false, desc: "Dedupe handle" },
       ],
       extra: [
         { id: "v4s_cid", placeholder: "contact_id", label: "Contact ID" },
         { id: "v4s_chan", placeholder: "channel", label: "Channel", type: "select", options: ["email", "sms"] },
         { id: "v4s_body", placeholder: "message body", label: "Body" },
+        { id: "v4s_ctal", placeholder: "Chat Now", label: "CTA Label (email)", req: false },
+        { id: "v4s_ctau", placeholder: "https://example.com/start", label: "CTA URL (email)", req: false },
         { id: "v4s_idem", placeholder: "idempotencyKey", label: "Idempotency Key", req: false },
       ],
       bodyFn: (g, ex) => {
         const b = { contactId: ex.v4s_cid || "<contact_id>", channel: ex.v4s_chan || "email", body: ex.v4s_body || "<message>" };
+        if (ex.v4s_ctal) b.ctaLabel = ex.v4s_ctal;
+        if (ex.v4s_ctau) b.ctaUrl = ex.v4s_ctau;
         if (ex.v4s_idem) b.idempotencyKey = ex.v4s_idem;
         return b;
       }
@@ -1507,6 +1513,33 @@ const ENDPOINTS_V4 = [
       ],
       extra: [{ id: "v4l_msg", placeholder: "Reply with exactly: OK", label: "User Message" }],
       bodyFn: (g, ex) => ({ messages: [{ role: "user", content: ex.v4l_msg || "Reply with exactly: OK" }] })
+    },
+  ]},
+
+  { section: "Agents", endpoints: [
+    { method: "GET", path: "/v4/agents/models", summary: "List agent models", desc: "OpenAI-compatible model discovery for the Responses harness. Always returns a single model, <code>delphi</code>. Accepts <code>x-api-key</code> or <code>Authorization: Bearer</code>. <strong>No <code>data</code> envelope.</strong>"
+    },
+    { method: "POST", path: "/v4/agents/responses", summary: "OpenAI Responses as the mind", desc: "The OpenAI <strong>Responses API</strong> with the mind's Delphi identity and freshly retrieved <strong>PUBLIC</strong> knowledge. Point an OpenAI client at base URL <code>/v4/agents</code> with <code>model: \"delphi\"</code>. Function tools (run in your code), streaming, and structured output work. <code>store</code> must be <code>false</code>; <code>previous_response_id</code>, <code>user</code>, <code>metadata</code>, hosted tools and images return 400, so send the full history each turn. When echoing a <code>function_call</code> item back, <strong>drop its <code>namespace</code> field</strong> or you get a misleading 400 on <code>input.str</code>. Top-level <code>instructions</code> can override the persona. Each request, including tool continuations, takes one slot of the owner's <code>/v4/generate</code> daily budget. Retry an occasional fast 502 once. <strong>No <code>data</code> envelope.</strong>",
+      danger: "metered",
+      body: [
+        { name: "input", type: "string|object[]", req: true, desc: "A prompt, or the full item history (messages, function_call, function_call_output)" },
+        { name: "model", type: "string", req: false, desc: "Must be \"delphi\" (optional)" },
+        { name: "store", type: "boolean", req: false, desc: "Must be false (optional)" },
+        { name: "instructions", type: "string|null", req: false, desc: "Caller instructions layered on the persona (can override it)" },
+        { name: "stream", type: "boolean", req: false, desc: "SSE Responses events, no [DONE] sentinel" },
+        { name: "tools", type: "object[]", req: false, desc: "Function tools only; executed by the caller" },
+      ],
+      extra: [
+        { id: "v4ar_input", placeholder: "In two sentences, who are you and what do you help people with?", label: "Input" },
+        { id: "v4ar_instr", placeholder: "Reply in one sentence.", label: "Instructions", req: false },
+        { id: "v4ar_stream", placeholder: "stream", label: "Stream", type: "select", options: ["false", "true"], req: false },
+      ],
+      bodyFn: (g, ex) => {
+        const b = { model: "delphi", store: false, input: ex.v4ar_input || "In two sentences, who are you and what do you help people with?" };
+        if (ex.v4ar_instr) b.instructions = ex.v4ar_instr;
+        if (ex.v4ar_stream === "true") b.stream = true;
+        return b;
+      }
     },
   ]},
 
@@ -1592,8 +1625,11 @@ const ENDPOINTS_V4 = [
         { name: "name", type: "string", req: true, desc: "Owner-unique integration name" },
         { name: "codeBundle", type: "string", req: true, desc: "Bundled JavaScript (maximum 1,000,000 characters)" },
         { name: "declaredHosts", type: "string[]", req: false, desc: "Runtime egress allowlist" },
-        { name: "subscribedEvents", type: "string[]", req: false, desc: "Delphi event triggers" },
+        { name: "subscribedEvents", type: "(string|object)[]", req: false, desc: "Delphi event triggers; object entries may add a JMESPath filter" },
         { name: "cron", type: "string|null", req: false, desc: "Optional cron expression" },
+        { name: "durable", type: "boolean", req: false, desc: "True for durable workflows (sleep / wait-for-event)" },
+        { name: "checkResults", type: "object[]", req: false, desc: "Pre-publish check results produced from source" },
+        { name: "sourceSnapshot", type: "object", req: false, desc: "{files, manifest} source snapshot" },
       ],
       extra: [
         { id: "v4ic_name", placeholder: "scheduled-followup", label: "Name" },
@@ -1616,6 +1652,10 @@ const ENDPOINTS_V4 = [
         { name: "name", type: "string", req: true, desc: "Owner-unique integration name/slug" },
         { name: "codeBundle", type: "string", req: true, desc: "Bundled JavaScript (maximum 1,000,000 characters)" },
         { name: "activate", type: "boolean", req: false, desc: "Deploy a newly created integration (default true)" },
+        { name: "subscribedEvents", type: "(string|object)[]", req: false, desc: "Delphi event triggers" },
+        { name: "durable", type: "boolean", req: false, desc: "True for durable workflows" },
+        { name: "checkResults", type: "object[]", req: false, desc: "Pre-publish check results" },
+        { name: "sourceSnapshot", type: "object", req: false, desc: "{files, manifest} source snapshot" },
       ],
       extra: [
         { id: "v4ip_name", placeholder: "scheduled-followup", label: "Name" },
@@ -1710,8 +1750,11 @@ const ENDPOINTS_V4 = [
       pathParams: [{ name: "id", desc: "Integration deployment ID" }],
       body: [
         { name: "codeBundle", type: "string", req: true, desc: "Bundled JavaScript (maximum 1,000,000 characters)" },
-        { name: "sourceHash", type: "string", req: false, desc: "Optional source hash" },
+        { name: "sourceHash", type: "string", req: false, desc: "Source the bundle was built from. Required for source-backed deployments" },
         { name: "declaredHosts", type: "string[]", req: false, desc: "Runtime egress allowlist" },
+        { name: "subscribedEvents", type: "object[]", req: false, desc: "Delphi event triggers" },
+        { name: "durable", type: "boolean", req: false, desc: "True for durable workflows" },
+        { name: "checkResults", type: "object[]", req: false, desc: "Pre-publish check results" },
       ],
       extra: [
         { id: "v4iba_id", placeholder: "integration_id", label: "Integration ID" },

@@ -13,5 +13,6 @@
   "v4_test_ask": false,
   "v4_test_generate": false,
   "v4_test_llm": false,
+  "v4_test_agents": false,
   "v4_idempotency_key": ""
 }

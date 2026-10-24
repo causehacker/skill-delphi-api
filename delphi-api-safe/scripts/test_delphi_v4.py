@@ -19,6 +19,7 @@ Usage:
     python3 scripts/test_delphi_v4.py --account jim_carter          # from keys.json
     python3 scripts/test_delphi_v4.py --api-key ... --test-generate # metered
     python3 scripts/test_delphi_v4.py --api-key ... --test-llm      # token spend
+    python3 scripts/test_delphi_v4.py --api-key ... --test-agents   # one /generate budget slot
 """
 
 import argparse
@@ -287,6 +288,68 @@ def test_llm(api_key: str, prompt: str) -> Dict[str, Any]:
     return res
 
 
+def openai_err_note(status: str, parsed: Any, raw: str) -> str:
+    """/llm and /agents use the OpenAI envelope {"error": {"code","message","param"}}."""
+    err = parsed.get("error") if isinstance(parsed, dict) else None
+    if isinstance(err, dict):
+        param = f" (param: {err['param']})" if err.get("param") else ""
+        return f"http {status} {err.get('code','')}: {err.get('message','')}{param}".strip()
+    return err_note(status, parsed, raw)
+
+
+def test_agents_models(api_key: str) -> Dict[str, Any]:
+    """Free read. Raw OpenAI model list, no `data` envelope."""
+    status, parsed, raw = http_json("GET", "/agents/models", api_key)
+    models = parsed.get("data") if isinstance(parsed, dict) else None
+    ids = [m.get("id") for m in models if isinstance(m, dict)] if isinstance(models, list) else []
+    ok = status == "200" and "delphi" in ids
+    return {
+        "agents_models": "PASS" if ok else "FAIL",
+        "agents_models_http": status,
+        "models": ids,
+        "note": "" if ok else openai_err_note(status, parsed, raw),
+    }
+
+
+def test_agents_responses(api_key: str, prompt: str) -> Dict[str, Any]:
+    """METERED — one slot of the owner's /generate daily budget per request.
+
+    Raw OpenAI Response, no `data` envelope. A fast 502 was seen intermittently
+    on 2026-10-24 and cleared on retry, so retry once before failing (the retry
+    costs another slot).
+    """
+    body = {"model": "delphi", "store": False, "input": prompt}
+    status, parsed, raw = http_json("POST", "/agents/responses", api_key, body, max_time=90)
+    retried = False
+    if status == "502":
+        time.sleep(2)
+        retried = True
+        status, parsed, raw = http_json("POST", "/agents/responses", api_key, body, max_time=90)
+    text = ""
+    if isinstance(parsed, dict):
+        text = "".join(
+            part.get("text", "")
+            for item in parsed.get("output") or [] if item.get("type") == "message"
+            for part in item.get("content") or [] if part.get("type") == "output_text"
+        )
+    ok = status == "200" and bool(text)
+    res = {
+        "agents_responses": "PASS" if ok else "FAIL",
+        "agents_responses_http": status,
+        "retried_502": retried,
+        "note": "" if ok else openai_err_note(status, parsed, raw),
+    }
+    if ok:
+        res["text_preview"] = text[:160]
+        res["status"] = parsed.get("status")
+        res["usage"] = parsed.get("usage")
+    if status == "403":
+        res["note"] = "key lacks the `generate:text` scope (403)"
+    elif status == "429":
+        res["note"] = "owner's daily generation budget exhausted (429)"
+    return res
+
+
 def resolve_key(args) -> str:
     if args.api_key:
         return args.api_key
@@ -318,6 +381,9 @@ def main() -> None:
     ap.add_argument("--test-llm", action="store_true",
                     help="Include POST /v4/llm/chat/completions — costs tokens.")
     ap.add_argument("--llm-prompt", default="Reply with exactly: OK")
+    ap.add_argument("--test-agents", action="store_true",
+                    help="Include POST /v4/agents/responses — one /generate budget slot per call.")
+    ap.add_argument("--agents-prompt", default="Reply in one short sentence: who are you?")
     ap.add_argument("--test-conversations", action="store_true",
                     help="Include the v4 conversational surface (create + synchronous send + "
                          "insights). Needs `conversations:write`; invokes the model.")
@@ -357,6 +423,7 @@ def main() -> None:
     out["webhook_subscriptions"], _ = check_get(
         "webhook_subscriptions", "/webhook-subscriptions", key,
         nested=("subscriptions",), want="list")
+    out["agents_models"] = test_agents_models(key)
 
     if args.test_conversations:
         out["conversations"] = test_conversations(key, args.conversation_message)
@@ -366,6 +433,8 @@ def main() -> None:
         out["generate"] = test_generate(key, args.generate_prompt, args.idempotency_key)
     if args.test_llm:
         out["llm"] = test_llm(key, args.llm_prompt)
+    if args.test_agents:
+        out["agents_responses"] = test_agents_responses(key, args.agents_prompt)
 
     # Roll-up. SKIP is deliberately NOT counted as a failure: it means the key
     # lacks a scope, which is a provisioning gap rather than a fault, and making

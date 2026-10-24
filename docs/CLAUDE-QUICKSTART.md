@@ -76,6 +76,10 @@ Add this Q&A pair to my knowledge base: "<question>" / "<answer>"
 How many contacts do I have, and which ones haven't interacted in 90 days?
 ```
 
+```text
+Show me how to call my Delphi from the OpenAI SDK with a tool, using the agents endpoint.
+```
+
 Claude will confirm before anything that changes real state — V4 can send a real
 SMS or email (`/v4/send`), delete knowledge (`DELETE /v4/content/{id}`), or
 deploy live code (integrations). Those always need your explicit go-ahead.

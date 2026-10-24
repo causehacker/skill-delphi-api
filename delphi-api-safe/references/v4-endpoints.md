@@ -3,10 +3,12 @@
 V4 is the **Delphi Developer Platform API** (`openapi: 3.1.0`, `info.version: 4.0.0`).
 Captured from the live spec at `GET /v4/openapi.json` and grounded in real tests.
 
-**Last cross-checked against the live contract 2026-09-03: 47 paths / 65
-operations.** The operation count is unchanged from 2026-08-02. The full
-surface includes all 22 integration operations plus conversations and
-attachments; see those sections below.
+**Last cross-checked against the live contract 2026-10-24: 49 paths / 67
+operations.** New since 2026-09-03: the two OpenAI Responses-compatible
+**Agents** operations (`GET /v4/agents/models`, `POST /v4/agents/responses`),
+plus `ctaLabel`/`ctaUrl` on `/send` and durable/checks fields on integration
+deploys. The full surface includes all 22 integration operations plus
+conversations and attachments; see those sections below.
 
 Base URL: `https://api.delphi.ai/v4`
 Authentication: `x-api-key` header, same as V3. **Existing V3 keys work against
@@ -38,7 +40,8 @@ chat path now has a V4 counterpart.
 | Knowledge-base **writes** (create/update/delete) | **V4** | V3 can only *search* content |
 | Outbound SMS/email to a contact | **V4** `/send` | no V3 equivalent |
 | Owner-voice generation (no retrieval) | **V4** `/generate` | |
-| Raw OpenAI-compatible completions | **V4** `/llm/chat/completions` | |
+| Raw OpenAI-compatible completions (no persona) | **V4** `/llm/chat/completions` | |
+| The mind's voice + public knowledge behind an OpenAI client, with tools/streaming | **V4** `/agents/responses` | added 2026-10-24 |
 | Webhooks, integrations platform | **V4** | no V3 equivalent |
 
 ### Choosing a chat surface now that both have one
@@ -71,14 +74,14 @@ These bite if you assume V3 habits carry over.
    - `{"data": {"subscriptions": [...]}}` — `/webhook-subscriptions` (nested!)
    - `{"data": {"questions": [...]}}` — `/profile/questions` (nested!)
    - `{"data": "ok"}` — mutation acks (tag assign/unassign, property delete, content delete, notify-owner)
-   - **No envelope at all** — `/llm/chat/completions` returns a raw OpenAI object
+   - **No envelope at all** — `/llm/chat/completions` and `/agents/*` return raw OpenAI objects
 2. **Error shape.** V4 returns `{"type", "code", "message", "param"?, "details"?}`.
    V3 returns `{"detail": "..."}`. Code written against V3's `detail` key will
    silently fail to surface V4 errors. For `403` entitlement errors, `details`
    carries `{feature, currentPlan, upgradeTo}` (`feature_gated`) or
    `{quotaKey, used, limit, currentPlan, upgradeTo}` (`entitlement_quota_exceeded`).
-   `/llm/chat/completions` is the exception — it uses the OpenAI envelope
-   `{"error": {"message", "type", "code", "param"}}`.
+   `/llm/chat/completions` and `/agents/*` are the exceptions — they use the
+   OpenAI envelope `{"error": {"message", "type", "code", "param"}}`.
 3. **camelCase everywhere.** `nextCursor`, `lastInteractedAt`, `totalInteractionCount`,
    `accessTier`, `isSmsOptIn`. V3 is snake_case (`next_cursor`, `date_joined`).
 4. **Pagination.** Cursor-based via `nextCursor` → pass back as `?cursor=`.
@@ -146,8 +149,11 @@ A `502 dependency_failure` is a backend fault and no amount of scope will fix it
 App-Launch key can silently *remove* access to the V4 conversational endpoints.
 Verify with `POST /v4/conversations` before cutting over.
 
-Note: the spec declares only `ApiKeyAuth` under `securitySchemes` and no
-per-operation `security` blocks, so scopes appear **only in prose descriptions**.
+Note: the spec's global security is `ApiKeyAuth` (`x-api-key`). Since
+2026-10-24 it also declares `AgentBearerAuth` (`Authorization: Bearer <Delphi
+key>`), used only by the two `/agents/*` operations, which accept either
+header. No operation declares scopes in a `security` block, so scopes appear
+**only in prose descriptions**.
 You cannot enumerate a key's scopes from the spec — discover them by calling
 (the `scripts/test_delphi_v4.py` harness reports the ones it can infer).
 
@@ -420,7 +426,12 @@ Outbound and generation primitives. None have a V3 equivalent.
     not re-invoked. Key may also travel as an `Idempotency-Key`,
     `X-Delivery-Id`, or `X-Step-Id` header (body wins).
 - `POST /v4/send` — **deliver an SMS or email to a real contact.**
-  - Body: `contactId`, `channel` (`sms|email`), `body`, `idempotencyKey`
+  - Body: `contactId`, `channel` (`sms|email`), `body` (all required),
+    `idempotencyKey`
+  - Email only (ignored for SMS): `ctaLabel` (1–80 chars, default `"Chat Now"`)
+    and `ctaUrl` (https, no embedded credentials, ≤2048, defaults to the
+    owner's Delphi profile) set the email's button. Per the live spec,
+    2026-10-24; not runtime-tested because `/send` messages a real person.
   - **Consent is enforced server-side** against the contact's own per-channel
     opt-in flag; a caller-supplied opt-in is never trusted. An opted-out contact
     returns `422 consent_rejected`.
@@ -453,7 +464,136 @@ Outbound and generation primitives. None have a V3 equivalent.
     alongside `content` inside `choices[].message`. Don't assume strict OpenAI
     field parity when parsing.
   - `409` if a request with the same `Idempotency-Key` is already in flight.
-  - This is **not** the mind's voice — for that use `/v4/generate`.
+  - This is **not** the mind's voice — for that use `/v4/generate`, or
+    `/v4/agents/responses` for voice + knowledge behind an OpenAI client.
+
+## Agents (OpenAI Responses-compatible) — added 2026-10-24
+
+The mind as a drop-in **OpenAI Responses API** model: the owner's Delphi
+identity plus **freshly retrieved PUBLIC knowledge**, with function tools,
+streaming, and structured output. Point an unmodified OpenAI client at base URL
+`https://api.delphi.ai/v4/agents`, set `model: "delphi"`, and pass the Delphi
+key as the OpenAI API key (`Authorization: Bearer`). The key selects the
+Delphi; there is no way to pick another one.
+
+Runtime notes below come from ~70 calls on `jim_carter` (a legacy `dsk-` key)
+on 2026-10-24 unless marked as spec-only.
+
+- `GET /v4/agents/models` — OpenAI model discovery. Always returns one model:
+  `{"object":"list","data":[{"id":"delphi","object":"model","created":0,"owned_by":"delphi"}]}`.
+  Read-only and free. Verified `200` with **either** `x-api-key` or
+  `Authorization: Bearer`, on both a `dsk-` and a `dlph_` key. Missing key →
+  `401 "A Delphi API key is required."`; bad key → `401 "A valid Delphi API key is required."`.
+- `POST /v4/agents/responses` — one Responses API turn.
+  - **Scope**: `generate:text` (spec). Legacy `dsk-` keys pass.
+  - **Body** (all validated strictly; unknown fields → `400 "Extra inputs are
+    not permitted"` with `param` naming the field):
+    - `input` — a string, or an array of items: role messages (`user`,
+      `assistant`, `developer`, `system`; content as a string or
+      `input_text` parts), `function_call`, and `function_call_output`.
+      Empty string is accepted and gets a greeting.
+    - `model` — must be `"delphi"` (anything else → `400 expected "delphi"`).
+      Omitting it works.
+    - `store` — must be `false` (`true` → `400 expected false`). Omitting it
+      works and the response reports `"store": false`.
+    - `instructions`, `stream`, `tools`, `tool_choice` (`auto|none|required`),
+      `text.format` (`text`, `json_object`, `json_schema`, strict or not),
+      `temperature`, `max_output_tokens` all work.
+  - **Rejected** (verified): `previous_response_id`, `user`, `metadata`
+    (all "Extra inputs are not permitted"), hosted tools such as `web_search`
+    (`param: tools.0.type`, "Input should be 'function'"), and `input_image`
+    parts (`400 param: input.str`). Per the spec, server-side conversations,
+    audio, and caller-supplied visitor identity, access tier, or saved thread
+    context are also unsupported.
+  - **Response**: a raw OpenAI `Response` object, no `data` envelope — `id`
+    (`resp_…`), `status` (`completed`, or `incomplete` with
+    `incomplete_details.reason: "max_output_tokens"`), `output[]`, `usage`.
+    Output text is at `output[].content[].text` where `type ==
+    "output_text"`. Echoed `text.format` comes back with the schema under
+    `schema_` (not `schema`), a cosmetic server quirk.
+  - **Latency**: ~2.5–6 s non-streaming.
+  - **Token footprint**: a one-line prompt reported ~8,400 `input_tokens`
+    (persona + retrieved knowledge); one tool definition pushed it to ~12,500.
+    Budget for that when sizing context.
+  - **Budget**: **each request takes one slot from the same per-owner daily
+    budget as `/v4/generate`**, including tool-call continuations. Verified:
+    one `/generate` + three `/agents/responses` calls dropped `/generate`'s
+    `budgetRemaining` by exactly 4. Read `budgetRemaining` from `/generate`
+    if you need the number; `/agents/responses` does not return it.
+  - **Function tools run in your harness.** The model returns a
+    `function_call` item (`call_id`, `name`, `arguments` JSON string); you run
+    it and send the **complete history** back: the original input, the
+    `function_call` item, then `{"type":"function_call_output","call_id":...,"output":"<string>"}`.
+    No server state carries over between calls.
+    - **Gotcha — strip `namespace` before echoing.** Returned
+      `function_call` items carry `"namespace": null`. Sending the item back
+      verbatim fails with a misleading `400 "Input should be a valid string"`
+      (`param: input.str`). Drop `namespace` (or rebuild the item from
+      `type`, `call_id`, `name`, `arguments`) and it works. Assistant
+      `message` items can be echoed verbatim.
+    - `call_id` values look like `functions.get_upcoming_events:0_a60b9413`.
+      Any string works as long as the call and its output match.
+    - Continuations work with or without re-sending `tools`.
+    - `strict: true`, `strict: false`, and omitting `strict` all work.
+  - **Streaming** (`stream: true`) returns `text/event-stream` with standard
+    Responses events, no `data` envelope and no `[DONE]` sentinel:
+    `response.created` → `response.output_item.added` →
+    `response.content_part.added` → `response.output_text.delta`… →
+    `response.output_text.done` → `response.content_part.done` →
+    `response.output_item.done` → `response.completed`. Tool calls stream as
+    `response.function_call_arguments.delta` / `.done`. Each frame carries
+    `sequence_number`.
+  - **Persona and instructions** (observed, worth knowing before you ship):
+    - The mind answers as its Delphi ("I'm Jim Carter's Delphi…").
+    - A `system` message in `input` that tries to replace the persona was
+      **ignored**: it still answered as the Delphi.
+    - **Top-level `instructions` CAN override the persona.** "You are not
+      Jim's Delphi. You are a generic assistant named Max." produced "I'm
+      Max, a generic assistant." Callers can strip the identity, so don't
+      treat this endpoint as an identity guarantee.
+    - Style-level `developer` messages and `instructions` are honoured (reply
+      in Spanish, one lowercase sentence).
+  - **Knowledge is PUBLIC-tier only.** A question about an offer the model
+    found no public content for got "I don't have specific evidence in Jim's
+    knowledge base…" rather than an invented answer. Internal-tier content is
+    not reachable here, by design.
+  - **Intermittent fast `502`s.** About 4 of ~70 calls returned
+    `502 {"error":{"type":"api_error","code":"http_error","message":"The Delphi could not complete the request."}}`
+    in ~300 ms, and the identical request succeeded on retry. Retry a `502`
+    once with backoff before treating it as a real failure. Each retry costs
+    another budget slot.
+
+  Minimal tool loop (Python, OpenAI SDK):
+
+  ```python
+  from openai import OpenAI
+  client = OpenAI(base_url="https://api.delphi.ai/v4/agents", api_key=DELPHI_KEY)
+  history = [{"role": "user", "content": "What events are coming up in November?"}]
+  r = client.responses.create(model="delphi", store=False, tools=TOOLS, input=history)
+  for item in r.output:
+      if item.type == "function_call":
+          history.append({"type": "function_call", "call_id": item.call_id,
+                          "name": item.name, "arguments": item.arguments})  # no namespace
+          history.append({"type": "function_call_output", "call_id": item.call_id,
+                          "output": run_tool(item.name, item.arguments)})
+  r = client.responses.create(model="delphi", store=False, tools=TOOLS, input=history)
+  print(r.output_text)
+  ```
+  The SDK snippet mirrors the raw HTTP calls that were verified. The SDK itself
+  was not run in the 2026-10-24 test.
+
+  **Which "OpenAI-compatible" endpoint?**
+
+  | | `/v4/llm/chat/completions` | `/v4/agents/responses` |
+  |---|---|---|
+  | API shape | Chat Completions | Responses |
+  | Persona | none (voiceless) | the mind's Delphi identity |
+  | Knowledge retrieval | no | yes, PUBLIC tier |
+  | Streaming | rejected | ✅ |
+  | Tool calling | rejected | ✅ function tools (client-executed) |
+  | Structured output | — | ✅ `json_object` / `json_schema` |
+  | Scope | `llm` | `generate:text` |
+  | Metering | token spend | one `/generate` budget slot per request |
 
 ## Thread sessions
 
@@ -502,6 +642,19 @@ No V3 equivalent.
   (needs `integrations:source:read`), `PUT /{id}/build-artifact`.
   `codeBundle` is esbuild output, ≤1,000,000 chars — **bundling happens upstream
   of the API**.
+- **Deploy body fields** (create, `push`, `build-artifact`; per the live spec,
+  2026-10-24, not runtime-tested):
+  - `subscribedEvents` — event triggers from `delphi.config.json` `events`.
+    A string entry is shorthand for `{type}`; an object may add a JMESPath
+    `filter` (and `thresholdDays` for the inactivity trigger).
+  - `durable` — `true` for deployments that run durable workflows
+    (sleep / wait-for-event).
+  - `checkResults` — pre-publish check results built from source
+    (`{name, status, message, details}`), stored on the deployment with
+    `checksSourceHash` / `checksUpdatedAt`.
+  - `sourceSnapshot` (`{files, manifest}`) on create/push and `PUT /{id}/source`.
+  - `sourceHash` on `build-artifact` — the source the bundle was built from.
+    **Required for source-backed deployments.**
 - **Secrets**: `GET /{id}/secrets` (names only), `PUT|DELETE /{id}/secrets/{name}`.
   Plaintext (≤16384) is **accepted once and never returned**.
 - **Triggers**: `GET|PUT /{id}/triggers` — event subscriptions + per-event
@@ -544,9 +697,9 @@ Cross-cutting behavior worth knowing:
 
 | HTTP | Meaning | V4 notes |
 |------|---------|----------|
-| 200 | Success | Payload under `data` (except `/llm/*`) |
+| 200 | Success | Payload under `data` (except `/llm/*` and `/agents/*`) |
 | 202 | Accepted | `/data-deletion-requests` — queued, not done |
-| 400 | Bad Request | Validation failed |
+| 400 | Bad Request | Validation failed. On `/agents/responses`, `param` names the offending field. `param: input.str` usually means an echoed `function_call` item still has `namespace` |
 | 401 | Unauthorized | Missing/invalid key. **Unauthenticated `/v4/openapi.json` returns 401** (V3 returns 403) |
 | 403 | Forbidden | Often a **missing scope**, not a dead key. `details` carries `feature_gated` / `entitlement_quota_exceeded` context |
 | 404 | Not Found | Resource absent |
@@ -554,7 +707,7 @@ Cross-cutting behavior worth knowing:
 | 422 | Unprocessable | `/send` — `consent_rejected` (contact not opted in) |
 | 429 | Rate Limited | Also an **exhausted `/generate` daily budget** |
 | 500 | Server Error | Backend failure |
-| 502 | Bad Gateway | Upstream generation / model provider failed |
+| 502 | Bad Gateway | Upstream generation / model provider failed. `/agents/responses` shows occasional fast (~300 ms) 502s that clear on retry |
 | 503 | Unavailable | `/generate`: budget unenforceable (fails closed). Integrations: CF loader unreachable, **nothing went live** |
 
 **No numeric rate limit is published in the V4 spec** — unlike V3's documented
@@ -577,7 +730,9 @@ knowledge, or deploy code.
 - `PUT /v4/integrations/{id}/secrets/{name}` — writes a credential
 
 **Metered — safe but not free:** `POST /v4/generate` (daily owner budget),
-`POST /v4/llm/chat/completions` (token spend), and the conversation endpoints
+`POST /v4/agents/responses` (same daily owner budget, one slot per request
+including tool continuations), `POST /v4/llm/chat/completions` (token spend),
+and the conversation endpoints
 (`/messages`, `/messages/stream`) which invoke the model per call. Use sparingly;
 prefer an idempotency key so retries don't double-charge.
 
@@ -589,7 +744,7 @@ account** — observed 9,999/day on one account and 494/day on another. Read
 `GET /profile`, `/profile/questions`, `/profiles/{username}`, `/contacts`,
 `/contacts/{id}`, `/contacts/{id}/threads`, `/contact-tags`,
 `/contact-properties/definitions`, `/content`, `/content/{id}`,
-`/integrations`, `/webhook-subscriptions`,
+`/integrations`, `/webhook-subscriptions`, `/agents/models`,
 `/conversations/{id}/insights` (needs `insights:read`).
 
 Creating a conversation (`POST /v4/conversations`) is technically a write but is

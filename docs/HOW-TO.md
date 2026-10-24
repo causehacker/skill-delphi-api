@@ -26,7 +26,9 @@ chat** — V4 gained conversations and streaming on 2026-08-02, plus a
 *synchronous* send that needs no SSE parsing. V3 keeps voice, knowledge-base
 search, and the KB agent; V4 keeps contacts, content writes, outbound messaging,
 webhooks, and integrations. The playground is cross-checked against the live
-OpenAPI contracts and exposes all 34 V3 operations and all 65 V4 operations.
+OpenAPI contracts and exposes all 34 V3 operations and all 67 V4 operations
+(last checked 2026-10-24, when the two OpenAI Responses-compatible **Agents**
+operations landed).
 
 Banners on the endpoint cards tell you what's safe to press:
 
@@ -173,7 +175,8 @@ python3 delphi-api-safe/scripts/test_delphi_v4.py --account <name>
 - `GET /v4/contact-tags`, `/v4/contact-properties/definitions`
 - `GET /v4/content`, `/v4/content/{id}`
 - `GET /v4/integrations`, `/v4/webhook-subscriptions`
-- opt-in metered: `POST /v4/generate` (`--test-generate`), `POST /v4/llm/chat/completions` (`--test-llm`)
+- `GET /v4/agents/models` (free; raw OpenAI model list, always `delphi`)
+- opt-in metered: `POST /v4/generate` (`--test-generate`), `POST /v4/llm/chat/completions` (`--test-llm`), `POST /v4/agents/responses` (`--test-agents`; one `/generate` budget slot per call, retries a fast 502 once)
 
 **Deliberately not implemented** — these mutate real-world state and must be run
 by hand with the user watching: `POST /v4/send` (real SMS/email),

@@ -130,15 +130,21 @@ Read-only by default — safe to run against production:
 python3 delphi-api-safe/scripts/test_delphi_v4.py --api-key "$DELPHI_API_KEY"
 ```
 
-Include the two metered endpoints (daily budget / token spend). Reusing the same
+Include the metered endpoints (daily budget / token spend). Reusing the same
 `--idempotency-key` across runs replays the prior reply instead of re-charging:
 
 ```bash
 python3 delphi-api-safe/scripts/test_delphi_v4.py \
   --api-key "$DELPHI_API_KEY" \
   --test-generate --idempotency-key "smoke-2026-08-01" \
-  --test-llm
+  --test-llm \
+  --test-agents
 ```
+
+`--test-agents` calls `POST /v4/agents/responses`, the OpenAI Responses-compatible
+endpoint that answers as the mind with its public knowledge. Each call uses one
+slot of the owner's `/v4/generate` daily budget. `GET /v4/agents/models` is free
+and runs on every V4 pass.
 
 The V4 harness deliberately does **not** implement `/v4/send`,
 `/v4/data-deletion-requests`, content deletes, integration publish/push, or
@@ -147,7 +153,7 @@ secret writes — those mutate real-world state and should be run by hand.
 ## Interactive API Reference (browser)
 
 A single-page interactive explorer with a **V3 / V4 toggle** in the top bar —
-all 34 V3 operations and all 65 V4 operations — with a live test harness, streaming SSE
+all 34 V3 operations and all 67 V4 operations — with a live test harness, streaming SSE
 support, and curl copy/paste.
 
 ### Quick start
@@ -168,7 +174,7 @@ python3 docs/serve.py --port 9000  # custom port
 
 - **V3 / V4 toggle** in the top bar — switches the whole explorer between the two surfaces
 - **V3: 34 operation cards** (Conversations, Questions, Users, Tags, User Info, Search, Agent, Clone, Voice)
-- **V4: 65 operation cards** (Profile, **Conversations**, Contacts, Contact Tags, Contact Properties, Content, Generate & Send, LLM, Thread Sessions, Webhooks, Integrations, Data Deletion)
+- **V4: 67 operation cards** (Profile, **Conversations**, Contacts, Contact Tags, Contact Properties, Content, Generate & Send, LLM, **Agents**, Thread Sessions, Webhooks, Integrations, Data Deletion)
 - **Safety banners** — high-impact state changes (send, delete, deploy, secret writes) get a red warning and an action-time confirmation; model-backed, metered, or externally visible operations get an amber warning
 - **Read-only live mode by default** — GET requests can run immediately, while
   every live POST, PUT, PATCH, or DELETE requires enabling **Allow live writes**;
